@@ -20,26 +20,24 @@ namespace gif {
 
 	};
 
-	struct RGBpixel {
-		uint8_t r = 0;
-		uint8_t g = 0;
-		uint8_t b = 0;
+	template<typename T>
+	struct pixel {
+		T r = 0;
+		T g = 0;
+		T b = 0;
 
-		auto operator==(RGBpixel& rhs) -> bool {
+		auto operator==(pixel& rhs) -> bool {
 			return r == rhs.r && g == rhs.g && b == rhs.b;
 		}
-	};
-
-	struct RGBpixel32 {
-		uint32_t r = 0;
-		uint32_t g = 0;
-		uint32_t b = 0;
-		auto operator+(RGBpixel const& rhs) -> RGBpixel32 {
-			return RGBpixel32{ r + rhs.r,g + rhs.g,b + rhs.b };
+		auto operator+(pixel<uint8_t> const& rhs) -> pixel {
+			return pixel{ r + rhs.r,g + rhs.g,b + rhs.b };
 		};
+
 	};
 
-	//TODO: color table
+	using RGBpixel = pixel<uint8_t>;
+	using RGBpixel32 = pixel<uint32_t>;
+
 	class globalColorTable {
 		std::vector<RGBpixel> const table;
 	};
@@ -80,11 +78,11 @@ namespace gif {
 		auto const Grange = *Gbounds.second - *Gbounds.first;
 		auto const Brange = *Bbounds.second - *Bbounds.first;
 
-		auto const ranges = std::vector{Rrange, Grange, Brange };
+		auto const ranges = std::vector{ Rrange, Grange, Brange };
 
 		auto const max = std::max_element(ranges.begin(), ranges.end());
 
-		auto const greatest = std::clamp(std::distance(ranges.begin(), max), ptrdiff_t(0),ptrdiff_t(2));
+		auto const greatest = std::clamp(std::distance(ranges.begin(), max), ptrdiff_t(0), ptrdiff_t(2));
 		std::sort(bucket.begin(), bucket.end(), [greatest](RGBpixel& i, RGBpixel& j) -> bool {
 			switch (greatest) {
 			case 0:
@@ -117,8 +115,8 @@ namespace gif {
 			return std::vector{ average(pixels) };
 		}
 		auto res = median_cut(pixels);
-		auto lhs = palletize(res.first, bitDepth /2);
-		auto rhs = palletize(res.second, bitDepth /2);
+		auto lhs = palletize(res.first, bitDepth / 2);
+		auto rhs = palletize(res.second, bitDepth / 2);
 		lhs.insert(lhs.end(), rhs.begin(), rhs.end());
 		return lhs;
 	}
