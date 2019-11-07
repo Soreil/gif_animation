@@ -80,11 +80,11 @@ namespace gif {
 		auto const Grange = *Gbounds.second - *Gbounds.first;
 		auto const Brange = *Bbounds.second - *Bbounds.first;
 
-		auto const ranges = std::vector<int>{ Rrange, Grange, Brange };
+		auto const ranges = std::vector{Rrange, Grange, Brange };
 
 		auto const max = std::max_element(ranges.begin(), ranges.end());
 
-		auto const greatest = std::clamp(std::distance(ranges.begin(), max), 0, 2);
+		auto const greatest = std::clamp(std::distance(ranges.begin(), max), ptrdiff_t(0),ptrdiff_t(2));
 		std::sort(bucket.begin(), bucket.end(), [greatest](RGBpixel& i, RGBpixel& j) -> bool {
 			switch (greatest) {
 			case 0:
