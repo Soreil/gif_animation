@@ -5,7 +5,7 @@
 
 using std::byte;
 
-//https://www.w3.org/Graphics/GIF/spec-gif87.txt implementation
+//https://www.w3.org/Graphics/GIF/spec-gif89a.txt implementation
 namespace gif {
 	std::vector<byte> const  signature = { byte('G'),byte('I'),byte('F'),byte('8'),byte('9'),byte('a') };
 	class screenDescriptor {
