@@ -2,12 +2,17 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <optional>
+#include <map>
 
 using std::byte;
 
 //https://www.w3.org/Graphics/GIF/spec-gif89a.txt implementation
 namespace gif {
-	std::vector<byte> const  signature = { byte('G'),byte('I'),byte('F'),byte('8'),byte('9'),byte('a') };
+	class header {
+		std::vector<byte> const  signature = { byte('G'),byte('I'),byte('F'),byte('8'),byte('9'),byte('a') };
+	};
+
 	class screenDescriptor {
 		uint16_t width = 0;
 		uint16_t height = 0;
@@ -38,8 +43,10 @@ namespace gif {
 	using RGBpixel = pixel<uint8_t>;
 	using RGBpixel32 = pixel<uint32_t>;
 
-	class globalColorTable {
+	class colorTable {
+	public:
 		std::vector<RGBpixel> const table;
+		colorTable(std::vector<RGBpixel>& t) : table(t) {}
 	};
 
 	class imageDescriptor {
@@ -120,4 +127,83 @@ namespace gif {
 		lhs.insert(lhs.end(), rhs.begin(), rhs.end());
 		return lhs;
 	}
+
+	class encoder {
+	public:
+		header signature;
+		screenDescriptor screen;
+		std::optional<colorTable> GCT;
+		std::vector<std::tuple<
+			imageDescriptor,
+			std::optional<colorTable>,
+			std::vector<RGBpixel>>
+			>descriptors;
+
+		trailer end;
+
+		auto lzw_encode(std::vector<byte> const& in, colorTable const& palette) -> std::vector<uint16_t> {
+			uint8_t const lzw_code_size = 8; //number of color bits??
+			constexpr uint16_t const clearCode = 1 << lzw_code_size;
+			constexpr uint16_t const end_of_info = clearCode + 1;
+
+			uint16_t compressionID = clearCode + 2;
+			constexpr uint16_t codeBits = lzw_code_size + 1;
+
+			uint16_t const maxCode = 0xfff;
+
+			std::map<uint16_t, std::vector<byte>> table;
+
+			//initialize with our palette we should really clean this up, it's close to overflow
+			for (auto i = size_t(0); i < palette.table.size(); i++) {
+				table[uint16_t(i)] = { byte(i) };
+			}
+
+			auto cc = std::vector{ byte((clearCode & 0x100) >> 8),byte(clearCode & 0xff) };
+
+			//BUG:This inserting seems to fail for one reason or another!
+			auto why = table.insert({ clearCode,cc }); //This doesn't find it a byte
+
+			table[end_of_info] = std::vector{ byte((end_of_info & 0x100) >> 8),byte(end_of_info & 0xff) }; //this doesn't fit in a byte
+
+			std::vector<uint16_t> out;
+
+			out.push_back(clearCode);
+
+			//First pixel
+			out.push_back(uint16_t(in[0]));
+			//Second pixel
+			table[compressionID++] = std::vector{ in[0],in[1] };
+
+			std::vector<byte> localString{ in[1] };
+			uint16_t currentKey = 0xff; //FIX
+
+			for (size_t i = 2; i < in.size(); i++) {
+
+				localString.emplace_back(in[i]);
+
+				auto result = std::find_if(table.begin(), table.end(), [localString](auto const& kv) -> bool {
+					return kv.second == localString;
+					});
+
+				if (result != table.end()) {
+					currentKey = result->first;
+				}
+				else {
+					out.push_back(currentKey);
+					table[compressionID++] = localString;
+					//currentKey = compressionID;
+
+					//Initialize local string
+					localString = std::vector{ localString.back() };
+
+				}
+
+			}
+			//End of pixels, final key
+			out.push_back(currentKey);
+			out.push_back(end_of_info);
+
+			return out;
+		}
+	};
 }
