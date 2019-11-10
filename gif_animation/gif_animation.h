@@ -144,26 +144,21 @@ namespace gif {
 		trailer end;
 
 		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<uint16_t> {
-			uint8_t const lzw_code_size = 8; //number of color bits??
-			constexpr uint16_t const clearCode = 1 << lzw_code_size;
-			constexpr uint16_t const end_of_info = clearCode + 1;
+			auto const lzw_code_size = colorTableBits; //number of color bits??
+			uint16_t const clearCode = size_t(1) << lzw_code_size;
+			uint16_t const end_of_info = clearCode + 1;
 
 			uint16_t compressionID = clearCode + 2;
-			constexpr uint16_t codeBits = lzw_code_size + 1;
-
-			//uint16_t const maxCode = 0xfff;
+			//uint16_t codeBits = lzw_code_size + 1;
 
 			std::map<uint16_t, std::vector<byte>> table;
 
 			//initialize with our palette we should really clean this up, it's close to overflow
-			for (auto i = size_t(0); i < (1 << colorTableBits); i++) {
+			for (auto i = size_t(0); i < (size_t(1) << colorTableBits); i++) {
 				table[uint16_t(i)] = { byte(i) };
 			}
 
-			auto cc = std::vector{ byte((clearCode & 0x100) >> 8),byte(clearCode & 0xff) };
-
-			//BUG:This inserting seems to fail for one reason or another!
-			auto why = table.insert({ clearCode,cc }); //This doesn't find it a byte
+			table[clearCode] = std::vector{ byte((clearCode & 0x100) >> 8),byte(clearCode & 0xff) }; //This doesn't find it a byte
 
 			table[end_of_info] = std::vector{ byte((end_of_info & 0x100) >> 8),byte(end_of_info & 0xff) }; //this doesn't fit in a byte
 
