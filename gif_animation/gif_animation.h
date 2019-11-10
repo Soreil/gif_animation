@@ -4,6 +4,8 @@
 #include <numeric>
 #include <optional>
 #include <map>
+#include <bitset>
+#include <cstddef> //For some reason GCC and Clang require this import to use bitwise operators on std::byte
 
 using std::byte;
 
@@ -205,5 +207,38 @@ namespace gif {
 
 			return out;
 		}
+
 	};
+
+	template<std::size_t n>
+	auto pack(std::vector<std::bitset<n>> const in) -> std::optional<std::vector<byte>> {
+		if constexpr (n < 2 || n > 14) {
+			return std::nullopt;
+		}
+
+		auto totalbits = in.size() * n;
+
+		std::vector<bool> buffer(totalbits);
+
+		auto visitedbits = 0;
+		for (auto const& bs : in) {
+			for (size_t i = 0; i < bs.size(); i++) {
+				buffer[visitedbits + i] = bs[i];
+			}
+			visitedbits += bs.size();
+		}
+
+		std::vector<byte> out;
+
+		if (buffer.size() % 8 != 0)
+			out.resize((buffer.size() / 8) + 1);
+		else
+			out.resize(buffer.size() / 8);
+
+		for (size_t i = 0; i < buffer.size(); i++) {
+			out[i / 8] |= byte(uint8_t(buffer[i]) << (i % 8));
+		}
+
+		return out;
+	}
 }
