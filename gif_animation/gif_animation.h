@@ -5,7 +5,7 @@
 #include <optional>
 #include <map>
 #include <bitset>
-#include <cstddef> //For some reason GCC and Clang require this import to use bitwise operators on std::byte
+#include <cstddef>
 
 using std::byte;
 
@@ -158,26 +158,28 @@ namespace gif {
 				table[uint16_t(i)] = { byte(i) };
 			}
 
-			table[clearCode] = std::vector{ byte((clearCode & 0x100) >> 8),byte(clearCode & 0xff) }; //This doesn't find it a byte
-
-			table[end_of_info] = std::vector{ byte((end_of_info & 0x100) >> 8),byte(end_of_info & 0xff) }; //this doesn't fit in a byte
+			table[clearCode] = std::vector{ byte((clearCode & 0xf00) >> 8),byte(clearCode & 0xff) }; //This doesn't find it a byte
+			table[end_of_info] = std::vector{ byte((end_of_info & 0xf00) >> 8),byte(end_of_info & 0xff) }; //this doesn't fit in a byte
 
 			std::vector<uint16_t> out;
 
 			out.push_back(clearCode);
 
-			//First pixel
+			//Push first pixel right on to output
 			out.push_back(uint16_t(in[0]));
-			//Second pixel
+
+			//Second pixel is always added to the map
 			table[compressionID++] = std::vector{ in[0],in[1] };
 
-			std::vector<byte> localString{ in[1] };
+			//initial state from which the algorithm can operate
+			std::vector<byte> hash{ in[1] };
 			uint16_t currentKey = 0;
 
-			auto result = std::find_if(table.begin(), table.end(), [localString](auto const& kv) -> bool {
-				return kv.second == localString;
+			auto result = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
+				return kv.second == hash;
 				});
 
+			//this has to always succeed or the input data has more range than the colortable
 			if (result != table.end()) {
 				currentKey = result->first;
 			}
@@ -185,10 +187,10 @@ namespace gif {
 
 			for (size_t i = 2; i < in.size(); i++) {
 
-				localString.emplace_back(in[i]);
+				hash.emplace_back(in[i]);
 
-				auto result = std::find_if(table.begin(), table.end(), [localString](auto const& kv) -> bool {
-					return kv.second == localString;
+				auto result = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
+					return kv.second == hash;
 					});
 
 				if (result != table.end()) {
@@ -196,11 +198,10 @@ namespace gif {
 				}
 				else {
 					out.push_back(currentKey);
-					table[compressionID++] = localString;
-					//currentKey = compressionID;
+					table[compressionID++] = hash;
 
-					//Initialize local string
-					localString = std::vector{ localString.back() };
+					//Initialize local string with suffix of old string
+					hash = std::vector{ hash.back() };
 
 				}
 

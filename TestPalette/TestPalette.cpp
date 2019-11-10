@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include "../gif_animation/gif_animation.h"
 #include <algorithm>
+#include <bitset>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -17,17 +18,45 @@ namespace TestPalette
 			auto palette = gif::palletize(image, 8);
 			Assert::IsTrue(std::equal(image.begin(), image.end(), palette.begin()));
 		}
+
 		TEST_METHOD(TestLZWWiki)
 		{
 			gif::encoder enc;
-			//std::vector<gif::RGBpixel> dummy;
-			//dummy.resize(0x100);
-			//gif::colorTable table(dummy);
+
+			auto expected = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
+			auto in = std::vector<byte>{ byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), };
+			
+			auto res = enc.lzw_encode(in, 8);
+
+			auto fixedWidth = std::vector<std::bitset<9>>(res.size());
+			for (size_t i = 0; i < res.size(); i++) {
+				fixedWidth[i] = res[i];
+			}
+			auto packed = gif::pack(fixedWidth);
+
+			if (packed) {
+				Assert::IsTrue(std::equal((*packed).begin(), (*packed).end(), expected.begin(), expected.end()));
+			}
+			else {
+				Assert::Fail();
+			}
+		}
+
+		TEST_METHOD(TestLZWWiki6)
+		{
+			gif::encoder enc;
 
 			auto out = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
-			auto in = std::vector<byte>{ byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), };
-			auto res = enc.lzw_encode(in, 8);
+			auto in = std::vector<byte>{ byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), };
+			auto res = enc.lzw_encode(in, 6);
+
+			auto fixedWidth = std::vector<std::bitset<7>>(res.size());
+			for (size_t i = 0; i < res.size(); i++) {
+				fixedWidth[i] = res[i];
+			}
+			auto packed = gif::pack(fixedWidth);
 		}
+
 		TEST_METHOD(Pack12)
 		{
 			auto in = std::vector<std::bitset<12>>({ {0xf0f},{0x1e1 } });
