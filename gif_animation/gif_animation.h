@@ -172,7 +172,16 @@ namespace gif {
 			table[compressionID++] = std::vector{ in[0],in[1] };
 
 			std::vector<byte> localString{ in[1] };
-			uint16_t currentKey = 0xff; //FIX
+			uint16_t currentKey = 0;
+
+			auto result = std::find_if(table.begin(), table.end(), [localString](auto const& kv) -> bool {
+				return kv.second == localString;
+				});
+
+			if (result != table.end()) {
+				currentKey = result->first;
+			}
+
 
 			for (size_t i = 2; i < in.size(); i++) {
 
@@ -200,6 +209,9 @@ namespace gif {
 			out.push_back(currentKey);
 			out.push_back(end_of_info);
 
+
+			//Instead of returning is uint16s we could pack right here.
+			
 			return out;
 		}
 
