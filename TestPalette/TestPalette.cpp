@@ -20,13 +20,13 @@ namespace TestPalette
 		TEST_METHOD(TestLZWWiki)
 		{
 			gif::encoder enc;
-			std::vector<gif::RGBpixel> dummy;
-			dummy.resize(0x100);
-			gif::colorTable table(dummy);
+			//std::vector<gif::RGBpixel> dummy;
+			//dummy.resize(0x100);
+			//gif::colorTable table(dummy);
 
 			auto out = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
 			auto in = std::vector<byte>{ byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), };
-			auto res = enc.lzw_encode(in, table);
+			auto res = enc.lzw_encode(in, 8);
 		}
 		TEST_METHOD(Pack12)
 		{

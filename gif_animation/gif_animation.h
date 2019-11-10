@@ -143,7 +143,7 @@ namespace gif {
 
 		trailer end;
 
-		auto lzw_encode(std::vector<byte> const& in, colorTable const& palette) -> std::vector<uint16_t> {
+		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<uint16_t> {
 			uint8_t const lzw_code_size = 8; //number of color bits??
 			constexpr uint16_t const clearCode = 1 << lzw_code_size;
 			constexpr uint16_t const end_of_info = clearCode + 1;
@@ -151,12 +151,12 @@ namespace gif {
 			uint16_t compressionID = clearCode + 2;
 			constexpr uint16_t codeBits = lzw_code_size + 1;
 
-			uint16_t const maxCode = 0xfff;
+			//uint16_t const maxCode = 0xfff;
 
 			std::map<uint16_t, std::vector<byte>> table;
 
 			//initialize with our palette we should really clean this up, it's close to overflow
-			for (auto i = size_t(0); i < palette.table.size(); i++) {
+			for (auto i = size_t(0); i < (1 << colorTableBits); i++) {
 				table[uint16_t(i)] = { byte(i) };
 			}
 
