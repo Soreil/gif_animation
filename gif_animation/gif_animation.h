@@ -143,6 +143,9 @@ namespace gif {
 
 		trailer end;
 
+		//This function returns a std::bitset<N> by design where N is the amount of bits needed to store colortable+clearcode+stopcode+generated codes
+		//bitset size can't be determined just based on the function input since it depends on the pixels how many codes are generated in the table
+		//a lower bound can be determined though based on the size of the colortable
 		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<uint16_t> {
 			auto const lzw_code_size = colorTableBits; //number of color bits??
 			uint16_t const clearCode = size_t(1) << lzw_code_size;
