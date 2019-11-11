@@ -3,6 +3,8 @@
 #include "../gif_animation/gif_animation.h"
 #include <algorithm>
 #include <bitset>
+#include <optional>
+#include <variant>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -14,9 +16,64 @@ namespace TestPalette
 
 		TEST_METHOD(TestMethodPalletize)
 		{
-			std::vector<gif::RGBpixel> image{ {10,20,30},{40,50,60},{70,80,90},{100,110,120},{130,140,150},{160,170,180},{190,200,210},{220,230,240} };
+			std::vector<gif::RGBpixel> image{
+				{10,20,30},
+			{40,50,60},
+			{70,80,90},
+			{100,110,120},
+			{130,140,150},
+			{160,170,180},
+			{190,200,210},
+			{220,230,240}
+			};
 			auto palette = gif::palletize(image, 8);
 			Assert::IsTrue(std::equal(image.begin(), image.end(), palette.begin()));
+		}
+
+		TEST_METHOD(TestMapPixels)
+		{
+			std::vector<gif::RGBpixel> image{
+				{10,20,30},
+			{40,50,60},
+			{70,80,90},
+			{100,110,120},
+			{130,140,150},
+			{160,170,180},
+			{190,200,210},
+			{220,230,240}
+			};
+			auto palette = gif::palletize(image, 8);
+			Assert::IsTrue(std::equal(image.begin(), image.end(), palette.begin()));
+
+			auto mapped = gif::mapPixels(image, palette);
+		}
+
+		TEST_METHOD(TestPixel)
+		{
+			auto expected = std::vector<byte>{ byte(0x55), byte(0xff), byte(0x00) };
+			auto pixel = gif::RGBpixel{ 0x55,0xff,0x00 };
+			auto bytes = pixel.write();
+			Assert::IsTrue(std::equal(bytes.begin(), bytes.end(), expected.begin()));
+		}
+
+		TEST_METHOD(TestPixelWide)
+		{
+			auto expectedBE = std::vector<byte>{
+				byte(0xff) ,byte(0x00) ,byte(0x11) ,byte(0xee),
+				byte(0xd0) ,byte(0xd0) ,byte(0xd0) ,byte(0xd0),
+				byte(0xab) ,byte(0xcd) ,byte(0xef) ,byte(0x01)
+			};
+
+			auto expectedLE = std::vector<byte>{
+				byte(0xee),byte(0x11),byte(0x00) ,byte(0xff) ,
+				byte(0xd0),byte(0xd0),byte(0xd0) ,byte(0xd0) ,
+				byte(0x01),byte(0xef),byte(0xcd) ,byte(0xab) ,
+			};
+
+			auto pixel = gif::RGBpixel32{ 0xff0011ee,0xd0d0d0d0,0xabcdef01 };
+			auto bytes = pixel.write();
+			Assert::IsFalse(std::equal(bytes.begin(), bytes.end(), expectedBE.begin()));
+			Assert::IsTrue(std::equal(bytes.begin(), bytes.end(), expectedLE.begin()));
 		}
 
 		TEST_METHOD(TestLZWWiki)
@@ -25,17 +82,16 @@ namespace TestPalette
 
 			auto expected = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
 			auto in = std::vector<byte>{ byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), };
-			
-			auto res = enc.lzw_encode(in, 8);
 
-			auto fixedWidth = std::vector<std::bitset<9>>(res.size());
-			for (size_t i = 0; i < res.size(); i++) {
-				fixedWidth[i] = res[i];
-			}
-			auto packed = gif::pack(fixedWidth);
+			auto encoded = enc.lzw_encode(in, 8);
+
+			//std::optional<std::pair<std::vector<byte>,size_t>
+			auto packed = std::visit([](auto const& v) -> auto {
+				return gif::pack(v);
+				}, encoded);
 
 			if (packed) {
-				Assert::IsTrue(std::equal((*packed).begin(), (*packed).end(), expected.begin(), expected.end()));
+				Assert::IsTrue(std::equal((*packed).first.begin(), (*packed).first.end(), expected.begin(), expected.end()));
 			}
 			else {
 				Assert::Fail();
@@ -48,13 +104,12 @@ namespace TestPalette
 
 			auto out = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
 			auto in = std::vector<byte>{ byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), };
-			auto res = enc.lzw_encode(in, 6);
+			auto encoded = enc.lzw_encode(in, 6);
 
-			auto fixedWidth = std::vector<std::bitset<7>>(res.size());
-			for (size_t i = 0; i < res.size(); i++) {
-				fixedWidth[i] = res[i];
-			}
-			auto packed = gif::pack(fixedWidth);
+			auto packed = std::visit([](auto const& v) -> auto {
+				return gif::pack(v);
+				}, encoded);
+
 		}
 
 		TEST_METHOD(Pack12)
@@ -69,7 +124,7 @@ namespace TestPalette
 			auto out = gif::pack(in);
 
 			if (out) {
-				Assert::IsTrue(std::equal((*out).begin(), (*out).end(), expected.begin(), expected.end()));
+				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
 			}
 			else {
 				Assert::Fail();
@@ -86,7 +141,7 @@ namespace TestPalette
 			auto out = gif::pack(in);
 
 			if (out) {
-				Assert::IsTrue(std::equal((*out).begin(), (*out).end(), expected.begin(), expected.end()));
+				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
 			}
 			else {
 				Assert::Fail();
@@ -104,7 +159,7 @@ namespace TestPalette
 			auto out = gif::pack(in);
 
 			if (out) {
-				Assert::IsTrue(std::equal((*out).begin(), (*out).end(), expected.begin(), expected.end()));
+				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
 			}
 			else {
 				Assert::Fail();
