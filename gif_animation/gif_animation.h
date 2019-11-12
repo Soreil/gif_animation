@@ -442,9 +442,9 @@ namespace gif {
 			return res;
 		}
 
-		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::optional<std::pair<std::vector<byte>,size_t>> {
+		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::optional<std::pair<std::vector<byte>, size_t>> {
 			auto enc = lzw_encode(in, colorTableBits);
-			auto packed = std::visit([](auto const& v) -> std::optional<std::pair<std::vector<byte>,size_t>> {
+			auto packed = std::visit([](auto const& v) -> std::optional<std::pair<std::vector<byte>, size_t>> {
 				return pack(v);
 				}, enc);
 			return packed;
@@ -467,8 +467,10 @@ namespace gif {
 				}
 			}
 			for (auto& [desc, localTable, pixels] : descriptors) {
-				auto bytes = desc.write();
-				std::copy(bytes.begin(), bytes.end(), std::back_inserter(out));
+				{
+					auto bytes = desc.write();
+					std::copy(bytes.begin(), bytes.end(), std::back_inserter(out));
+				}
 
 				if (localTable) {
 					activeTable = &localTable.value();
@@ -478,11 +480,19 @@ namespace gif {
 					}
 				}
 
-				if (activeTable != nullptr)
-				{
-					auto const mapped = mapPixels(pixels, *activeTable);
-					auto const asBytes = encode(mapped, activeTable->bitsNeeded());
-				}
+				//we need a table after all
+				if (activeTable == nullptr)
+					continue;
+
+				auto const mapped = mapPixels(pixels, *activeTable);
+				auto const asBytes = encode(mapped, activeTable->bitsNeeded());
+
+				if (!asBytes.has_value())
+					continue;
+
+				auto const [bytes, size] = asBytes.value();
+				out.emplace_back(byte(size));
+
 
 			}
 
@@ -490,7 +500,7 @@ namespace gif {
 	};
 
 	template<std::size_t n>
-	auto pack(std::vector<std::bitset<n>> const in) -> std::optional<std::pair<std::vector<byte>,size_t>> {
+	auto pack(std::vector<std::bitset<n>> const in) -> std::optional<std::pair<std::vector<byte>, size_t>> {
 		if constexpr (n < 2 || n > 14) {
 			return std::nullopt;
 		}
@@ -499,7 +509,7 @@ namespace gif {
 
 		std::vector<bool> buffer(totalbits);
 
-		auto visitedbits = 0;
+		size_t visitedbits = 0;
 		for (auto const& bs : in) {
 			for (size_t i = 0; i < bs.size(); i++) {
 				buffer[visitedbits + i] = bs[i];
@@ -518,6 +528,6 @@ namespace gif {
 			out[i / 8] |= byte(uint8_t(buffer[i]) << (i % 8));
 		}
 
-		return std::pair<std::vector<byte>,size_t>( out,n );
+		return std::pair<std::vector<byte>, size_t>(out, n);
 	}
 }
