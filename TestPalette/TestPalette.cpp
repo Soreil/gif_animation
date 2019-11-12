@@ -5,15 +5,43 @@
 #include <bitset>
 #include <optional>
 #include <variant>
+#include <fstream>
+#include <filesystem>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace TestPalette
 {
-	TEST_CLASS(TestPalette)
+	TEST_CLASS(Output)
 	{
 	public:
+		TEST_METHOD(TestFullEncode) {
+			std::vector<gif::RGBpixel> image{
+				{40,40,40},		{255,255,255},	{255,255,255},
+				{255,255,255},	{40,40,40},		{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
+			};
 
+			auto enc = gif::encoder(3, 5, image);
+			//For now the colortable and image are missing
+
+
+			auto binaryImage = enc.write();
+			if (binaryImage) {
+				auto const img = binaryImage.value();
+
+				auto outFilePath = std::filesystem::path("out.gif");
+				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+			}
+		}
+
+	};
+	TEST_CLASS(Internals)
+	{
+	public:
 		TEST_METHOD(TestMethodPalletize)
 		{
 			std::vector<gif::RGBpixel> image{
@@ -28,6 +56,24 @@ namespace TestPalette
 			};
 			auto palette = gif::palletize(image, 8);
 			Assert::IsTrue(std::equal(image.begin(), image.end(), palette.begin()));
+		}
+
+		//We want our palletization code to support creating palettes larger than
+		//needed to represent the original data. Extra space is padded with zeroes.
+		TEST_METHOD(TestMethodPalletizeOversized)
+		{
+			std::vector<gif::RGBpixel> image{
+				{10,20,30},
+			{40,50,60},
+			{70,80,90},
+			{100,110,120},
+			{130,140,150},
+			{160,170,180},
+			{190,200,210},
+			{220,230,240}
+			};
+			auto palette = gif::palletize(image, 256);
+			Assert::IsFalse(std::equal(image.begin(), image.end(), palette.begin()));
 		}
 
 		TEST_METHOD(TestMapPixels)
@@ -88,7 +134,7 @@ namespace TestPalette
 			//std::optional<std::pair<std::vector<byte>,size_t>
 			auto packed = std::visit([](auto const& v) -> auto {
 				return gif::pack(v);
-				}, encoded);
+			}, encoded);
 
 			if (packed) {
 				Assert::IsTrue(std::equal((*packed).first.begin(), (*packed).first.end(), expected.begin(), expected.end()));
@@ -108,7 +154,7 @@ namespace TestPalette
 
 			auto packed = std::visit([](auto const& v) -> auto {
 				return gif::pack(v);
-				}, encoded);
+			}, encoded);
 
 		}
 

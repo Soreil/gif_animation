@@ -29,6 +29,13 @@ namespace gif {
 		byte pixelAspectRatio = byte(0);
 
 	public:
+		screenDescriptor(uint16_t wide, uint16_t high, bool useGCT = true) :width(wide), height(high), hasGCT(useGCT) {};
+		screenDescriptor() = default;
+
+		bool useGCT() {
+			return hasGCT;
+		}
+
 		auto write() -> std::vector<byte> {
 			std::vector<byte>out(7); //Fixed size required by spec
 			out[0] = byte(((width >> 0) & 0xff));
@@ -103,6 +110,7 @@ namespace gif {
 					return i;
 				}
 			}
+			return 2;
 		}
 	};
 
@@ -120,7 +128,7 @@ namespace gif {
 		std::bitset<3> localColorSize = 0;
 
 	public:
-		imageDescriptor(int width, int height) :width(width), height(height) {}
+		imageDescriptor(int width, int height, bool hasLocalColor = false) :width(width), height(height), hasLocalColor(hasLocalColor) {}
 
 		auto write() const -> std::vector<byte> {
 			std::vector<byte> out(10);
@@ -158,10 +166,14 @@ namespace gif {
 	};
 
 	class trailer {
+	public:
 		std::byte const trail = std::byte{ 0x3b };
 	};
 
 	auto median_cut(std::vector<RGBpixel> const& pixels) -> std::pair<std::vector<RGBpixel>, std::vector<RGBpixel>> {
+		if (pixels.size() == 0) {
+			return {};
+		}
 
 		auto bucket = pixels;
 		auto Rplane = std::vector<uint8_t>(bucket.size());
@@ -213,9 +225,12 @@ namespace gif {
 		return RGBpixel{ uint8_t(sum.r / pixels.size()),uint8_t(sum.g / pixels.size()),uint8_t(sum.b / pixels.size()) };
 	}
 
-	auto palletize(std::vector<RGBpixel> const& pixels, int bitDepth = 64) -> std::vector<RGBpixel> {
+	auto palletize(std::vector<RGBpixel> const& pixels, int bitDepth = 256) -> std::vector<RGBpixel> {
 		if (bitDepth == 1) {
-			return std::vector{ average(pixels) };
+			if (pixels.size() != 0)
+				return std::vector{ average(pixels) };
+			else
+				return {RGBpixel()};
 		}
 		auto res = median_cut(pixels);
 		auto lhs = palletize(res.first, bitDepth / 2);
@@ -288,6 +303,10 @@ namespace gif {
 		trailer end;
 
 	public:
+		//TODO: imagedescriptor, image data, support for multiple images in constructor
+		encoder(uint16_t width, uint16_t height, std::vector<RGBpixel> pixels) : screen(width, height), descriptors{ std::tuple{imageDescriptor(width,height),std::nullopt, pixels} }, GCT(colorTable(palletize(pixels))) {};
+		encoder() = default;
+
 		//This function returns a std::bitset<N> by design where N is the amount of bits needed to store colortable+clearcode+stopcode+generated codes
 		//bitset size can't be determined just based on the function input since it depends on the pixels how many codes are generated in the table
 		//a lower bound can be determined though based on the size of the colortable
@@ -491,11 +510,22 @@ namespace gif {
 					continue;
 
 				auto const [bytes, size] = asBytes.value();
-				out.emplace_back(byte(size));
+				out.emplace_back(byte(size-1));
 
+				auto bytesLeft = bytes.size();
+				auto amountOfBlocks = bytesLeft / 0xff;
+				for (size_t block = 0; block < amountOfBlocks; block++) {
+					out.emplace_back(byte(0xff)); //Block size
+					std::copy(bytes.begin() + (block * 0xff), bytes.begin() + (block + 1 * 0xff), std::back_inserter(out));
+				}
+				auto trailingBytes = bytesLeft % 0xff;
+				out.emplace_back(byte(trailingBytes));
 
+				std::copy(bytes.end() - trailingBytes, bytes.end(), std::back_inserter(out));
+				out.emplace_back(byte(0)); //END of image block
 			}
-
+			out.emplace_back(end.trail);
+			return out;
 		}
 	};
 
