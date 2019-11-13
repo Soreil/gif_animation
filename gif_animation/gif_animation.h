@@ -102,7 +102,7 @@ namespace gif {
 	class colorTable {
 	public:
 		std::vector<RGBpixel> const table;
-		colorTable(std::vector<RGBpixel>& t) : table(t) {}
+		colorTable(std::vector<RGBpixel> const & t) : table(t) {}
 
 		auto bitsNeeded() -> size_t {
 			for (int i = sizeof(size_t) * 8; i > 2; i--) {
@@ -128,7 +128,7 @@ namespace gif {
 		std::bitset<3> localColorSize = 0;
 
 	public:
-		imageDescriptor(int width, int height, bool hasLocalColor = false) :width(width), height(height), hasLocalColor(hasLocalColor) {}
+		imageDescriptor(uint16_t width, uint16_t height, bool hasLocalColor = false) :width(width), height(height), hasLocalColor(hasLocalColor) {}
 
 		auto write() const -> std::vector<byte> {
 			std::vector<byte> out(10);
@@ -267,7 +267,7 @@ namespace gif {
 	auto mapPixels(std::vector<RGBpixel> const& p, colorTable const& m) -> std::vector<byte> {
 		auto distance = [](RGBpixel const& lhs, RGBpixel const& rhs) -> auto {
 			return ((rhs.r - lhs.r) * (rhs.r - lhs.r)) +
-				((rhs.g - lhs.g) * (rhs.r - lhs.r)) +
+				((rhs.g - lhs.g) * (rhs.g - lhs.g)) +
 				((rhs.b - lhs.b) * (rhs.b - lhs.b));
 		};
 
@@ -304,7 +304,10 @@ namespace gif {
 
 	public:
 		//TODO: imagedescriptor, image data, support for multiple images in constructor
-		encoder(uint16_t width, uint16_t height, std::vector<RGBpixel> pixels) : screen(width, height), descriptors{ std::tuple{imageDescriptor(width,height),std::nullopt, pixels} }, GCT(colorTable(palletize(pixels))) {};
+		encoder(uint16_t width, uint16_t height, std::vector<RGBpixel> const & pixels) : screen(width, height),
+			descriptors{ std::tuple{imageDescriptor(width,height),std::nullopt, pixels} },
+			GCT(colorTable(palletize(pixels))) {};
+
 		encoder() = default;
 
 		//This function returns a std::bitset<N> by design where N is the amount of bits needed to store colortable+clearcode+stopcode+generated codes
@@ -336,22 +339,26 @@ namespace gif {
 			out.push_back(uint16_t(in[0]));
 
 			//Second pixel is always added to the map
-			table[++compressionID] = std::vector{ in[0],in[1] };
+			//table[++compressionID] = std::vector{ in[0],in[1] };
 
 			//initial state from which the algorithm can operate
 			std::vector<byte> hash{ in[1] };
 			uint16_t currentKey = 0;
 
-			auto result = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
+			auto earlyResult = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
 				return kv.second == hash;
 				});
 
 			//this has to always succeed or the input data has more range than the colortable
-			if (result != table.end()) {
-				currentKey = result->first;
+			if (earlyResult != table.end()) {
+				currentKey = earlyResult->first;
 			}
 
+			//Always add first string to table
+			table[++compressionID] = std::vector{ in[0],in[1] };
 
+
+			//For some reason currentkey starts updating at some point for some inputs
 			for (size_t i = 2; i < in.size(); i++) {
 
 				hash.emplace_back(in[i]);
@@ -369,7 +376,16 @@ namespace gif {
 
 					//Initialize local string with suffix of old string
 					hash = std::vector{ hash.back() };
+					auto at = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
+						return kv.second == hash;
+						});
 
+					if (at != table.end()) {
+						currentKey = at->first;
+					}
+					else {
+						throw std::exception("Impossible to hit this");
+					}
 				}
 
 			}

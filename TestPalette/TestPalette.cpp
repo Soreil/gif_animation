@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "CppUnitTest.h"
 #include "../gif_animation/gif_animation.h"
 #include <algorithm>
@@ -7,21 +6,143 @@
 #include <variant>
 #include <fstream>
 #include <filesystem>
+#include <cmath>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace TestPalette
 {
+	TEST_CLASS(HSL)
+	{
+	private:
+		template<typename T>
+		struct hsv;
+
+		template<typename T>
+		struct rgb {
+			T r;
+			T g;
+			T b;
+
+			rgb(hsv<double> in) {
+				auto C = in.v * in.s;
+				auto Hprime = in.h / 60.0;
+				auto X = C * (1 - std::abs(std::fmod(Hprime, 2.0) - 1.0));
+
+				if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = C;
+					g = X;
+					b = 0.0;
+				}
+				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = X;
+					g = C;
+					b = 0.0;
+				}
+				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = 0.0;
+					g = C;
+					b = X;
+
+				}
+				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = 0.0;
+					g = X;
+					b = C;
+				}
+				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = X;
+					g = 0.0;
+					b = C;
+				}
+				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				{
+					r = C;
+					g = 0.0;
+					b = X;
+				}
+				else
+				{
+					r = 0;
+					g = 0;
+					b = 0;
+				}
+
+				auto m = in.v - C;
+				r += m;
+				g += m;
+				b += m;
+			}
+			rgb(T rIn, T bIn, T cIn) : r(rIn), g(bIn), b(cIn) {};
+		};
+
+		template<typename T>
+		struct hsv {
+			T h;
+			T s;
+			T v;
+
+			hsv(rgb<double> in) {
+				auto [min, max] = std::minmax({ in.r,in.g,in.b });
+				if (max == min) h = 0;
+				else if (max == in.r) h = 60.0 * ((in.g - in.b) / (max - min));
+				else if (max == in.g) h = 60.0 * (2.0 + ((in.b - in.r) / (max - min)));
+				else h = 60.0 * (4.0 + ((in.r - in.g) / (max - min))); //This actually matches b by design, it should be impossible to not hit one of the 4 cases.
+
+				if (h < 0.0) h += 360.0;
+
+				if (max == 0.0) s = 0.0;
+				else if (min == 1.0) s = 0.0;
+				else s = (max - min) / (1.0 - std::abs(max + min - 1.0));
+
+				v = max;
+			}
+			hsv() = default;
+		};
+	public:
+		TEST_METHOD(RGBtoHSV) {
+			auto red = rgb<double>{ 1,0,0 };
+			auto hsv_red = hsv<double>(red);
+			auto pink = rgb<double>{ 0.750,0.375,0.750 };
+			auto hsv_pink = hsv<double>(pink);
+		};
+		TEST_METHOD(HSVtoRGB) {
+			auto red = rgb<double>{ 1,0,0 };
+			auto hsv_red = hsv<double>(red);
+			auto pink = rgb<double>{ 0.750,0.375,0.750 };
+			auto hsv_pink = hsv<double>(pink);
+		};
+	};
+
 	TEST_CLASS(Output)
 	{
 	public:
 		TEST_METHOD(TestFullEncode) {
+			auto const black = gif::RGBpixel{ 40,40,40 };
+			auto const white = gif::RGBpixel{ 255,255,255 };
+			auto const red = gif::RGBpixel{ 255,0,0 };
+			auto const green = gif::RGBpixel{ 0,255,0 };
+			auto const blue = gif::RGBpixel{ 0,0,255 };
+
+			//std::vector<gif::RGBpixel> image{
+			//	{40,40,40},		{255,255,255},	{255,255,255},
+			//	{255,255,255},	{40,40,40},		{255,255,255},
+			//	{255,255,255},	{255,255,255},	{255,255,255},
+			//	{255,255,255},	{255,255,255},	{255,255,255},
+			//	{255,255,255},	{255,255,255},	{255,255,255},
+			//};
+
 			std::vector<gif::RGBpixel> image{
-				{40,40,40},		{255,255,255},	{255,255,255},
-				{255,255,255},	{40,40,40},		{255,255,255},
-				{255,255,255},	{255,255,255},	{255,255,255},
-				{255,255,255},	{255,255,255},	{255,255,255},
-				{255,255,255},	{255,255,255},	{255,255,255},
+				red,white,red,
+				white,black,green,
+				white,white,blue,
+				white,white,white,
+				white,white,white
 			};
 
 			auto enc = gif::encoder(3, 5, image);
