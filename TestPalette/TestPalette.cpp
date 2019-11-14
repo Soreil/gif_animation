@@ -24,7 +24,7 @@ namespace TestPalette
 			T g;
 			T b;
 
-			rgb(hsv<double> in) {
+			rgb(hsv<T> in) {
 				auto C = in.v * in.s;
 				auto Hprime = in.h / 60.0;
 				auto X = C * (1 - std::abs(std::fmod(Hprime, 2.0) - 1.0));
@@ -35,32 +35,32 @@ namespace TestPalette
 					g = X;
 					b = 0.0;
 				}
-				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				else if (Hprime >= 1.0 && Hprime <= 2.0)
 				{
 					r = X;
 					g = C;
 					b = 0.0;
 				}
-				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				else if (Hprime >= 2.0 && Hprime <= 3.0)
 				{
 					r = 0.0;
 					g = C;
 					b = X;
 
 				}
-				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				else if (Hprime >= 3.0 && Hprime <= 4.0)
 				{
 					r = 0.0;
 					g = X;
 					b = C;
 				}
-				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				else if (Hprime >= 4.0 && Hprime <= 5.0)
 				{
 					r = X;
 					g = 0.0;
 					b = C;
 				}
-				else if (Hprime >= 0.0 && Hprime <= 1.0)
+				else if (Hprime >= 5.0 && Hprime <= 6.0)
 				{
 					r = C;
 					g = 0.0;
@@ -79,6 +79,10 @@ namespace TestPalette
 				b += m;
 			}
 			rgb(T rIn, T bIn, T cIn) : r(rIn), g(bIn), b(cIn) {};
+
+			auto toPixelRGB() -> gif::RGBpixel {
+				return gif::RGBpixel{ uint8_t(r * 255.0),uint8_t(g * 255.0),uint8_t(b * 255.0) };
+			}
 		};
 
 		template<typename T>
@@ -87,7 +91,7 @@ namespace TestPalette
 			T s;
 			T v;
 
-			hsv(rgb<double> in) {
+			hsv(rgb<T> in) {
 				auto [min, max] = std::minmax({ in.r,in.g,in.b });
 				if (max == min) h = 0;
 				else if (max == in.r) h = 60.0 * ((in.g - in.b) / (max - min));
@@ -97,12 +101,12 @@ namespace TestPalette
 				if (h < 0.0) h += 360.0;
 
 				if (max == 0.0) s = 0.0;
-				else if (min == 1.0) s = 0.0;
-				else s = (max - min) / (1.0 - std::abs(max + min - 1.0));
+				else s = (max - min) / max;
 
 				v = max;
 			}
-			hsv() = default;
+
+			hsv(T hIn, T sIn, T vIn) : h(fmod(hIn, 360.0)), s(sIn), v(vIn) {};
 		};
 	public:
 		TEST_METHOD(RGBtoHSV) {
@@ -110,13 +114,115 @@ namespace TestPalette
 			auto hsv_red = hsv<double>(red);
 			auto pink = rgb<double>{ 0.750,0.375,0.750 };
 			auto hsv_pink = hsv<double>(pink);
+			auto pink2 = rgb<double>(hsv_pink);
 		};
+
 		TEST_METHOD(HSVtoRGB) {
 			auto red = rgb<double>{ 1,0,0 };
 			auto hsv_red = hsv<double>(red);
 			auto pink = rgb<double>{ 0.750,0.375,0.750 };
 			auto hsv_pink = hsv<double>(pink);
 		};
+
+		TEST_METHOD(generateRainbow) {
+			std::vector<hsv<double>> pixelsHSV;
+			std::vector<gif::RGBpixel> outPixels;
+			for (double h = 0; h < 16*16; h += 1) {
+				pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
+			}
+			for (auto const& x : pixelsHSV) {
+				auto asFloat = rgb<double>(x);
+				outPixels.emplace_back(asFloat.toPixelRGB());
+			}
+
+			//The first pixel can bug out for some reason, big thonk
+			//outPixels[0] = gif::RGBpixel{ 0,0,0 };
+			//outPixels[1] = gif::RGBpixel{ 0xff,0xff,0xff };
+
+			//pad to number which does a clean sqrt
+			uint16_t width = uint16_t(sqrt(outPixels.size()));
+			auto height = width;
+
+			outPixels.resize(size_t(width) * size_t(height));
+
+			auto enc = gif::encoder(width, height, outPixels);
+			auto hasImg = enc.write();
+			if (hasImg) {
+				auto img = hasImg.value();
+				auto outFilePath = std::filesystem::path("rainbow1.gif");
+				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+
+			}
+		}
+
+		TEST_METHOD(generateRainbowAnimated) {
+			std::vector<std::vector<gif::RGBpixel>> frames;
+			for (double i = 0.0; i < 360.0; i += 10.0) {
+				std::vector<hsv<double>> pixelsHSV;
+				std::vector<gif::RGBpixel> outPixels;
+				for (double h = 0.0 + i; h < 360.0 + i; h += 2.0) {
+					pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
+				}
+				for (auto const& x : pixelsHSV) {
+					auto asFloat = rgb<double>(x);
+					outPixels.emplace_back(asFloat.toPixelRGB());
+				}
+				frames.emplace_back(outPixels);
+			}
+			//pad to number which does a clean sqrt
+
+			uint16_t width = uint16_t(sqrt(frames[0].size()));
+			auto height = width;
+
+			for (auto& frame : frames) {
+				frame.resize(size_t(width) * size_t(height));
+			}
+
+			auto enc = gif::encoder(width, height, frames);
+			auto hasImg = enc.write();
+			if (hasImg) {
+				auto img = hasImg.value();
+				auto outFilePath = std::filesystem::path("animated.gif");
+				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+			}
+		}
+
+		TEST_METHOD(generateRainbowAnimatedBuggy) {
+			std::vector<std::vector<gif::RGBpixel>> frames;
+			for (double i = 0.0; i < 360.0; i += 10.0) {
+				std::vector<hsv<double>> pixelsHSV;
+				std::vector<gif::RGBpixel> outPixels;
+				for (double h = 0.0 + i; h < 360.0 + i; h += 0.5) {
+					pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
+				}
+				for (auto const& x : pixelsHSV) {
+					auto asFloat = rgb<double>(x);
+					outPixels.emplace_back(asFloat.toPixelRGB());
+				}
+				frames.emplace_back(outPixels);
+			}
+			//pad to number which does a clean sqrt
+
+			uint16_t width = uint16_t(sqrt(frames[0].size()));
+			auto height = width;
+
+			for (auto& frame : frames) {
+				frame.resize(size_t(width) * size_t(height));
+			}
+
+			auto enc = gif::encoder(width, height, frames);
+			auto hasImg = enc.write();
+			if (hasImg) {
+				auto img = hasImg.value();
+				auto outFilePath = std::filesystem::path("largeanimation.gif");
+				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+			}
+		}
+
+
 	};
 
 	TEST_CLASS(Output)

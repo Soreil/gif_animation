@@ -102,7 +102,7 @@ namespace gif {
 	class colorTable {
 	public:
 		std::vector<RGBpixel> const table;
-		colorTable(std::vector<RGBpixel> const & t) : table(t) {}
+		colorTable(std::vector<RGBpixel> const& t) : table(t) {}
 
 		auto bitsNeeded() -> size_t {
 			for (int i = sizeof(size_t) * 8; i > 2; i--) {
@@ -111,6 +111,41 @@ namespace gif {
 				}
 			}
 			return 2;
+		}
+	};
+
+	class applicationExtensionLoop {
+	private:
+		byte extensionLabel = byte(0x21);
+		byte appExtensionLabel = byte(0xff);
+
+		byte blockSize = byte(0x0b);
+
+		std::vector<byte> appIdentifier = { byte('N'), byte('E'), byte('T'), byte('S'), byte('C'), byte('A'), byte('P'), byte('E'), };
+		std::vector<byte> appAuthentication = { byte('2'), byte('.'), byte('0'), };
+
+		byte subBlockDataSize = byte(0x03);
+		byte subBlockID = byte(0x01);
+		uint16_t loopCount = 0; //infinite
+		byte blockTerminator = byte(0x0);
+
+	public:
+		auto write() -> std::vector<byte> {
+			std::vector<byte> out;
+
+			out.emplace_back(extensionLabel);
+			out.emplace_back(appExtensionLabel);
+			out.emplace_back(blockSize);
+
+			std::copy(appIdentifier.begin(), appIdentifier.end(), std::back_inserter(out));
+			std::copy(appAuthentication.begin(), appAuthentication.end(), std::back_inserter(out));
+
+			out.emplace_back(subBlockDataSize);
+			out.emplace_back(subBlockID);
+			out.emplace_back(byte((loopCount >> 0) & 0xff));
+			out.emplace_back(byte((loopCount >> 8) & 0xff));
+			out.emplace_back(blockTerminator);
+			return out;
 		}
 	};
 
@@ -230,7 +265,7 @@ namespace gif {
 			if (pixels.size() != 0)
 				return std::vector{ average(pixels) };
 			else
-				return {RGBpixel()};
+				return { RGBpixel() };
 		}
 		auto res = median_cut(pixels);
 		auto lhs = palletize(res.first, bitDepth / 2);
@@ -294,6 +329,7 @@ namespace gif {
 		header signature;
 		screenDescriptor screen;
 		std::optional<colorTable> GCT;
+		std::optional<applicationExtensionLoop> loop;
 		std::vector<std::tuple<
 			imageDescriptor,
 			std::optional<colorTable>,
@@ -304,9 +340,18 @@ namespace gif {
 
 	public:
 		//TODO: imagedescriptor, image data, support for multiple images in constructor
-		encoder(uint16_t width, uint16_t height, std::vector<RGBpixel> const & pixels) : screen(width, height),
+		encoder(uint16_t width, uint16_t height, std::vector<RGBpixel> const& pixels) : screen(width, height),
 			descriptors{ std::tuple{imageDescriptor(width,height),std::nullopt, pixels} },
 			GCT(colorTable(palletize(pixels))) {};
+
+		encoder(uint16_t width, uint16_t height, std::vector<std::vector<RGBpixel>> const& pixels, bool looping = true) : screen(width, height),
+			GCT(colorTable(palletize(pixels[0]))) {
+			if (looping)
+				loop = applicationExtensionLoop();
+			for (size_t i = 0; i < pixels.size(); i++) {
+				descriptors.emplace_back(std::tuple{ imageDescriptor(width,height),std::nullopt,pixels[i] });
+			}
+		};
 
 		encoder() = default;
 
@@ -356,7 +401,6 @@ namespace gif {
 
 			//Always add first string to table
 			table[++compressionID] = std::vector{ in[0],in[1] };
-
 
 			//For some reason currentkey starts updating at some point for some inputs
 			for (size_t i = 2; i < in.size(); i++) {
@@ -501,6 +545,11 @@ namespace gif {
 					std::copy(bytes.begin(), bytes.end(), std::back_inserter(out));
 				}
 			}
+			if (loop) {
+				auto bytes = loop.value().write();
+				std::copy(bytes.begin(), bytes.end(), std::back_inserter(out));
+			}
+
 			for (auto& [desc, localTable, pixels] : descriptors) {
 				{
 					auto bytes = desc.write();
@@ -526,14 +575,15 @@ namespace gif {
 					continue;
 
 				auto const [bytes, size] = asBytes.value();
-				out.emplace_back(byte(size-1));
+				out.emplace_back(byte(size - 1));
 
 				auto bytesLeft = bytes.size();
 				auto amountOfBlocks = bytesLeft / 0xff;
 				for (size_t block = 0; block < amountOfBlocks; block++) {
 					out.emplace_back(byte(0xff)); //Block size
-					std::copy(bytes.begin() + (block * 0xff), bytes.begin() + (block + 1 * 0xff), std::back_inserter(out));
+					std::copy(bytes.begin() + (block * 0xff), bytes.begin() + ((block + 1) * 0xff), std::back_inserter(out));
 				}
+				bytesLeft -= amountOfBlocks * 0xff;
 				auto trailingBytes = bytesLeft % 0xff;
 				out.emplace_back(byte(trailingBytes));
 
