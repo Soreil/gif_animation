@@ -596,9 +596,9 @@ namespace gif {
 	};
 
 	template<std::size_t n>
-	auto pack(std::vector<std::bitset<n>> const in) -> std::optional<std::pair<std::vector<byte>, size_t>> {
+	auto pack(std::vector<std::bitset<n>> const in) -> std::pair<std::vector<byte>, size_t> {
 		if constexpr (n < 2 || n > 14) {
-			return std::nullopt;
+			throw std::exception("Bitset too small or large, error somewhere else?");
 		}
 
 		auto totalbits = in.size() * n;

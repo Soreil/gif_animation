@@ -127,7 +127,11 @@ namespace TestPalette
 		TEST_METHOD(generateRainbow) {
 			std::vector<hsv<double>> pixelsHSV;
 			std::vector<gif::RGBpixel> outPixels;
-			for (double h = 0; h < 16*16; h += 1) {
+
+			uint16_t width = 16;
+			uint16_t height = 16;
+
+			for (double h = 0; h < double(width * height); h += 1) {
 				pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
 			}
 			for (auto const& x : pixelsHSV) {
@@ -140,17 +144,23 @@ namespace TestPalette
 			//outPixels[1] = gif::RGBpixel{ 0xff,0xff,0xff };
 
 			//pad to number which does a clean sqrt
-			uint16_t width = uint16_t(sqrt(outPixels.size()));
-			auto height = width;
+			//uint16_t width = uint16_t(sqrt(outPixels.size()));
+			//auto height = width;
 
-			outPixels.resize(size_t(width) * size_t(height));
+			//outPixels.resize(size_t(width) * size_t(height));
 
 			auto enc = gif::encoder(width, height, outPixels);
 			auto hasImg = enc.write();
+
 			if (hasImg) {
 				auto img = hasImg.value();
-				auto outFilePath = std::filesystem::path("rainbow1.gif");
-				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				auto outFileDir = std::filesystem::path("buggedRainbow");
+				std::filesystem::create_directory(outFileDir);
+
+				int fileID = 0;
+				while (std::filesystem::exists(outFileDir / std::filesystem::path(std::to_string(fileID++) + "-" + std::to_string(width) + "x" + std::to_string(height) + ".gif")));
+
+				auto outFile = std::ofstream(outFileDir / std::filesystem::path(std::to_string(fileID) + "-" + std::to_string(width) + "x" + std::to_string(height) + ".gif"), std::ofstream::binary);
 				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
 
 			}
@@ -363,13 +373,9 @@ namespace TestPalette
 				return gif::pack(v);
 			}, encoded);
 
-			if (packed) {
-				Assert::IsTrue(std::equal((*packed).first.begin(), (*packed).first.end(), expected.begin(), expected.end()));
-			}
-			else {
-				Assert::Fail();
-			}
+			Assert::IsTrue(std::equal(packed.first.begin(), packed.first.end(), expected.begin(), expected.end()));
 		}
+
 
 		TEST_METHOD(TestLZWWiki6)
 		{
@@ -382,7 +388,6 @@ namespace TestPalette
 			auto packed = std::visit([](auto const& v) -> auto {
 				return gif::pack(v);
 			}, encoded);
-
 		}
 
 		TEST_METHOD(Pack12)
@@ -396,13 +401,10 @@ namespace TestPalette
 
 			auto out = gif::pack(in);
 
-			if (out) {
-				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
-			}
-			else {
-				Assert::Fail();
-			}
-		}
+			Assert::IsTrue(std::equal(out.first.begin(), out.first.end(), expected.begin(), expected.end()));
+
+		};
+
 		TEST_METHOD(Pack9)
 		{
 			auto in = std::vector<std::bitset<9>>({ {0x100 } });
@@ -413,13 +415,8 @@ namespace TestPalette
 
 			auto out = gif::pack(in);
 
-			if (out) {
-				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
-			}
-			else {
-				Assert::Fail();
-			}
-		}
+			Assert::IsTrue(std::equal(out.first.begin(), out.first.end(), expected.begin(), expected.end()));
+		};
 
 		TEST_METHOD(Pack7)
 		{
@@ -431,12 +428,8 @@ namespace TestPalette
 
 			auto out = gif::pack(in);
 
-			if (out) {
-				Assert::IsTrue(std::equal((*out).first.begin(), (*out).first.end(), expected.begin(), expected.end()));
-			}
-			else {
-				Assert::Fail();
-			}
-		}
+			Assert::IsTrue(std::equal(out.first.begin(), out.first.end(), expected.begin(), expected.end()));
+
+		};
 	};
 }
