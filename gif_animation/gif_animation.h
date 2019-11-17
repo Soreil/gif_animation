@@ -7,6 +7,7 @@
 #include <bitset>
 #include <cstddef>
 #include <variant>
+#include <tuple>
 #include "image.h"
 
 using std::byte;
@@ -183,9 +184,7 @@ namespace gif {
 		std::vector<std::bitset<9>>,
 		std::vector<std::bitset<10>>,
 		std::vector<std::bitset<11>>,
-		std::vector<std::bitset<12>>,
-		std::vector<std::bitset<13>>,
-		std::vector<std::bitset<14>>
+		std::vector<std::bitset<12>>
 	>;
 
 	template<std::size_t const n>
@@ -314,7 +313,12 @@ namespace gif {
 				}
 				else {
 					out.push_back(currentKey);
-					table[++compressionID] = hash;
+					if (compressionID >= 0xFFF) {
+						throw std::exception("CompressionID grew bigger than 12 bit in size");
+					}
+					else {
+						table[++compressionID] = hash;
+					}
 
 					//Initialize local string with suffix of old string
 					hash = std::vector{ hash.back() };
@@ -334,51 +338,75 @@ namespace gif {
 			//End of pixels, final key
 			out.push_back(currentKey);
 			out.push_back(end_of_info);
-			
+
 			return out;
 		}
 
 		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<byte> {
 			auto enc = lzw_encode(in, colorTableBits);
 
-			auto bitsNeeded = colorTableBits;
-			auto out = std::vector<std::byte>(1);
+			auto index = std::vector<std::vector<uint16_t>::iterator >();
 
-			int bitsLeft = 8;
-
-			for (auto& token : enc) {
-				if ((token & (1 << bitsNeeded)) != 0) {
-					bitsNeeded++;
+			for (size_t i = colorTableBits; i < 12; i++) {
+				if (auto found = std::find(enc.begin(), enc.end(), (1 << i)); found != enc.end()) {
+					index.emplace_back(found);
 				}
+			}
+			index.emplace_back(enc.end());
 
-				int bitsUsed = 8 - bitsLeft;
+			std::vector<std::vector<uint16_t>> blocks;
 
-				auto wordBitsLeft = bitsNeeded;
+			for (size_t i = 0; i < index.size() - 1; i++) {
+				blocks.emplace_back(std::vector(index[i], index[i + 1]));
+			}
 
-				if (bitsLeft != 0) {
-					out.back() |= std::byte(token << bitsUsed);
-					wordBitsLeft -= bitsLeft;
-					if (wordBitsLeft < 0) {
-						bitsLeft = -wordBitsLeft;
-					}
-					else if (wordBitsLeft == 0) {
-						bitsLeft = 0;
+			std::vector<byte> out;
+
+			size_t bitsUsed = 0;
+			for (size_t i = 0; i < blocks.size(); i++) {
+				size_t bitsPerCode = colorTableBits + 1 + i;
+				auto const& currentBlock = blocks[i];
+
+				for (size_t b = 0; b < currentBlock.size(); b++) {
+					auto bitsLeftIn = bitsPerCode;
+					auto bitsLeftOut = 8 - (bitsUsed % 8); //BUG: This doesn't work
+
+					if (bitsLeftOut == 8) {
 						out.resize(out.size() + 1);
+						bitsLeftOut = 8;
 					}
-					else if (wordBitsLeft > 0) {
-						bitsLeft = wordBitsLeft;
-						out.emplace_back(token >> (bitsNeeded - bitsLeft));
-						bitsLeft -= 8;
 
-						if (bitsLeft < 0) {
-							bitsLeft = -bitsLeft;
-						}
-						else if (bitsLeft == 0) {
-							out.resize(out.size() + 1);
-						}
-						else if (bitsLeft > 0) {
-							out.emplace_back(token >> ()
-						}
+					out.back() |= byte(currentBlock[b] << (8 - bitsLeftOut));
+					auto bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+					bitsUsed += bitsWritten;
+
+					bitsLeftIn -= bitsWritten;
+					if (bitsLeftIn == 0) {
+						continue;
+					}
+
+					out.resize(out.size() + 1);
+					bitsLeftOut = 8;
+
+					out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
+					bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+					bitsUsed += bitsWritten;
+
+					bitsLeftIn -= bitsWritten;
+					if (bitsLeftIn == 0) {
+						continue;
+					}
+
+					out.resize(out.size() + 1);
+					bitsLeftOut = 8;
+
+					out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
+					bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+					bitsUsed += bitsWritten;
+
+					bitsLeftIn -= bitsWritten;
+					if (bitsLeftIn != 0) {
+						throw std::exception("This should never happen");
 					}
 				}
 			}
@@ -450,7 +478,7 @@ namespace gif {
 
 	template<std::size_t n>
 	auto pack(std::vector<std::bitset<n>> const in) -> std::pair<std::vector<byte>, size_t> {
-		if constexpr (n < 2 || n > 14) {
+		if constexpr (n < 2 || n > 12) {
 			throw std::exception("Bitset too small or large, error somewhere else?");
 		}
 

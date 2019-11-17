@@ -107,6 +107,7 @@ namespace TestPalette
 			}
 
 			hsv(T hIn, T sIn, T vIn) : h(fmod(hIn, 360.0)), s(sIn), v(vIn) {};
+			hsv() = default;
 		};
 	public:
 		TEST_METHOD(RGBtoHSV) {
@@ -125,29 +126,22 @@ namespace TestPalette
 		};
 
 		TEST_METHOD(generateRainbow) {
-			std::vector<hsv<double>> pixelsHSV;
-			std::vector<gif::RGBpixel> outPixels;
+			uint16_t width = 256;
+			uint16_t height = 256;
 
-			uint16_t width = 32;
-			uint16_t height = 32;
+			std::vector<hsv<double>> pixelsHSV(size_t(width * height));
+			std::vector<gif::RGBpixel> outPixels(pixelsHSV.size());
 
-			for (double h = 0; h < double(width) * double(height); h += 1) {
-				pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
-			}
-			for (auto const& x : pixelsHSV) {
-				auto asFloat = rgb<double>(x);
-				outPixels.emplace_back(asFloat.toPixelRGB());
+			for (size_t i = 0; i < pixelsHSV.size(); i++) {
+				pixelsHSV[i].h = (360.0*(double(i)/ double(pixelsHSV.size())));
+				pixelsHSV[i].s = 1;
+				pixelsHSV[i].v = 1;
 			}
 
-			//The first pixel can bug out for some reason, big thonk
-			//outPixels[0] = gif::RGBpixel{ 0,0,0 };
-			//outPixels[1] = gif::RGBpixel{ 0xff,0xff,0xff };
-
-			//pad to number which does a clean sqrt
-			//uint16_t width = uint16_t(sqrt(outPixels.size()));
-			//auto height = width;
-
-			//outPixels.resize(size_t(width) * size_t(height));
+			for (size_t i = 0; i < outPixels.size(); i++) {
+				auto tmp = rgb<double>(pixelsHSV[i]);
+				outPixels[i] = tmp.toPixelRGB();
+			}
 
 			auto enc = gif::encoder(width, height, outPixels);
 			auto hasImg = enc.write();
@@ -158,9 +152,19 @@ namespace TestPalette
 				std::filesystem::create_directory(outFileDir);
 
 				int fileID = 0;
-				while (std::filesystem::exists(outFileDir / std::filesystem::path(std::to_string(fileID++) + "-" + std::to_string(width) + "x" + std::to_string(height) + ".gif")));
+				while (std::filesystem::exists(outFileDir /
+					std::filesystem::path(std::to_string(fileID) +
+						"-" + std::to_string(width) +
+						"x" + std::to_string(height) +
+						".gif")))
+					fileID++;
 
-				auto outFile = std::ofstream(outFileDir / std::filesystem::path(std::to_string(fileID) + "-" + std::to_string(width) + "x" + std::to_string(height) + ".gif"), std::ofstream::binary);
+				auto outFile = std::ofstream(outFileDir /
+					std::filesystem::path(std::to_string(fileID) +
+						"-" + std::to_string(width) +
+						"x" + std::to_string(height) +
+						".gif"), std::ofstream::binary);
+
 				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
 
 			}
@@ -171,7 +175,7 @@ namespace TestPalette
 			for (double i = 0.0; i < 360.0; i += 10.0) {
 				std::vector<hsv<double>> pixelsHSV;
 				std::vector<gif::RGBpixel> outPixels;
-				for (double h = 0.0 + i; h < 360.0 + i; h += 2.0) {
+				for (double h = 0.0 + i; h < 360.0 + i; h += 0.1) {
 					pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
 				}
 				for (auto const& x : pixelsHSV) {
@@ -239,27 +243,27 @@ namespace TestPalette
 	{
 	public:
 		TEST_METHOD(TestFullEncode) {
-			auto const black = gif::RGBpixel{ 40,40,40 };
-			auto const white = gif::RGBpixel{ 255,255,255 };
-			auto const red = gif::RGBpixel{ 255,0,0 };
-			auto const green = gif::RGBpixel{ 0,255,0 };
-			auto const blue = gif::RGBpixel{ 0,0,255 };
-
-			//std::vector<gif::RGBpixel> image{
-			//	{40,40,40},		{255,255,255},	{255,255,255},
-			//	{255,255,255},	{40,40,40},		{255,255,255},
-			//	{255,255,255},	{255,255,255},	{255,255,255},
-			//	{255,255,255},	{255,255,255},	{255,255,255},
-			//	{255,255,255},	{255,255,255},	{255,255,255},
-			//};
+			//auto const black = gif::RGBpixel{ 40,40,40 };
+			//auto const white = gif::RGBpixel{ 255,255,255 };
+			//auto const red = gif::RGBpixel{ 255,0,0 };
+			//auto const green = gif::RGBpixel{ 0,255,0 };
+			//auto const blue = gif::RGBpixel{ 0,0,255 };
 
 			std::vector<gif::RGBpixel> image{
-				red,white,red,
-				white,black,green,
-				white,white,blue,
-				white,white,white,
-				white,white,white
+				{40,40,40},		{255,255,255},	{255,255,255},
+				{255,255,255},	{40,40,40},		{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
+				{255,255,255},	{255,255,255},	{255,255,255},
 			};
+
+			//std::vector<gif::RGBpixel> image{
+			//	red,white,red,
+			//	white,black,green,
+			//	white,white,blue,
+			//	white,white,white,
+			//	white,white,white
+			//};
 
 			auto enc = gif::encoder(3, 5, image);
 			//For now the colortable and image are missing
