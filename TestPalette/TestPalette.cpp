@@ -128,10 +128,10 @@ namespace TestPalette
 			std::vector<hsv<double>> pixelsHSV;
 			std::vector<gif::RGBpixel> outPixels;
 
-			uint16_t width = 16;
-			uint16_t height = 16;
+			uint16_t width = 32;
+			uint16_t height = 32;
 
-			for (double h = 0; h < double(width * height); h += 1) {
+			for (double h = 0; h < double(width) * double(height); h += 1) {
 				pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
 			}
 			for (auto const& x : pixelsHSV) {
@@ -357,37 +357,6 @@ namespace TestPalette
 			auto bytes = pixel.write();
 			Assert::IsFalse(std::equal(bytes.begin(), bytes.end(), expectedBE.begin()));
 			Assert::IsTrue(std::equal(bytes.begin(), bytes.end(), expectedLE.begin()));
-		}
-
-		TEST_METHOD(TestLZWWiki)
-		{
-			gif::encoder enc;
-
-			auto expected = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
-			auto in = std::vector<byte>{ byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0x28), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), byte(0xff), };
-
-			auto encoded = enc.lzw_encode(in, 8);
-
-			//std::optional<std::pair<std::vector<byte>,size_t>
-			auto packed = std::visit([](auto const& v) -> auto {
-				return gif::pack(v);
-			}, encoded);
-
-			Assert::IsTrue(std::equal(packed.first.begin(), packed.first.end(), expected.begin(), expected.end()));
-		}
-
-
-		TEST_METHOD(TestLZWWiki6)
-		{
-			gif::encoder enc;
-
-			auto out = std::vector<byte>{ byte(0x00), byte(0x51), byte(0xFC), byte(0x1B), byte(0x28), byte(0x70), byte(0xA0), byte(0xC1), byte(0x83), byte(0x01),byte(0x01) };
-			auto in = std::vector<byte>{ byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x28), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), byte(0x3f), };
-			auto encoded = enc.lzw_encode(in, 6);
-
-			auto packed = std::visit([](auto const& v) -> auto {
-				return gif::pack(v);
-			}, encoded);
 		}
 
 		TEST_METHOD(Pack12)

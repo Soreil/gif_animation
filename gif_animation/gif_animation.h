@@ -7,6 +7,7 @@
 #include <bitset>
 #include <cstddef>
 #include <variant>
+#include "image.h"
 
 using std::byte;
 
@@ -65,39 +66,6 @@ namespace gif {
 			return out;
 		}
 	};
-
-	template<typename T>
-	struct pixel {
-		T r = 0;
-		T g = 0;
-		T b = 0;
-
-		auto operator==(pixel& rhs) -> bool {
-			return r == rhs.r && g == rhs.g && b == rhs.b;
-		}
-
-		auto operator+(pixel<uint8_t> const& rhs) -> pixel {
-			return pixel{ r + rhs.r,g + rhs.g,b + rhs.b };
-		};
-
-		//Currently this is writing big endian, gif wants little endian!
-		auto write() const -> std::vector<byte> {
-			std::vector<byte> out(sizeof(T) * 3);
-			for (size_t i = 0; i < sizeof(T); i++) {
-				out[i] = byte((r >> (i * 8)) & 0xff);
-			}
-			for (size_t i = 0; i < sizeof(T); i++) {
-				out[sizeof(T) + i] = byte((g >> (i * 8)) & 0xff);
-			}
-			for (size_t i = 0; i < sizeof(T); i++) {
-				out[(2 * sizeof(T)) + i] = byte((b >> (i * 8)) & 0xff);
-			}
-			return out;
-		}
-	};
-
-	using RGBpixel = pixel<uint8_t>;
-	using RGBpixel32 = pixel<uint32_t>;
 
 	class colorTable {
 	public:
@@ -205,77 +173,7 @@ namespace gif {
 		std::byte const trail = std::byte{ 0x3b };
 	};
 
-	auto median_cut(std::vector<RGBpixel> const& pixels) -> std::pair<std::vector<RGBpixel>, std::vector<RGBpixel>> {
-		if (pixels.size() == 0) {
-			return {};
-		}
-
-		auto bucket = pixels;
-		auto Rplane = std::vector<uint8_t>(bucket.size());
-		auto Gplane = std::vector<uint8_t>(bucket.size());
-		auto Bplane = std::vector<uint8_t>(bucket.size());
-
-		for (size_t i = 0; i < pixels.size(); i++) {
-			Rplane[i] = bucket[i].r;
-			Gplane[i] = bucket[i].g;
-			Bplane[i] = bucket[i].b;
-		}
-		auto const Rbounds = std::minmax_element(Rplane.begin(), Rplane.end());
-		auto const Gbounds = std::minmax_element(Gplane.begin(), Gplane.end());
-		auto const Bbounds = std::minmax_element(Bplane.begin(), Bplane.end());
-
-		auto const Rrange = *Rbounds.second - *Rbounds.first;
-		auto const Grange = *Gbounds.second - *Gbounds.first;
-		auto const Brange = *Bbounds.second - *Bbounds.first;
-
-		auto const ranges = std::vector{ Rrange, Grange, Brange };
-
-		auto const max = std::max_element(ranges.begin(), ranges.end());
-
-		auto const greatest = std::clamp(std::distance(ranges.begin(), max), ptrdiff_t(0), ptrdiff_t(2));
-		std::sort(bucket.begin(), bucket.end(), [greatest](RGBpixel& i, RGBpixel& j) -> bool {
-			switch (greatest) {
-			case 0:
-				return i.r < j.r;
-			case 1:
-				return i.g < j.g;
-			case 2:
-				return i.b < j.b;
-			default:
-				return false; //Earth has exploded if we hit this
-			}
-			});
-
-		auto lower = std::vector<RGBpixel>(bucket.begin(), bucket.begin() + (bucket.size() / 2));
-		auto upper = std::vector<RGBpixel>(bucket.begin() + (bucket.size() / 2), bucket.end());
-		return std::pair{ lower,upper };
-	}
-
-	auto average(std::vector<RGBpixel> const& pixels) -> RGBpixel {
-		RGBpixel32 sum;
-		for (auto const& p : pixels) {
-			sum = sum + p;
-		}
-
-		return RGBpixel{ uint8_t(sum.r / pixels.size()),uint8_t(sum.g / pixels.size()),uint8_t(sum.b / pixels.size()) };
-	}
-
-	auto palletize(std::vector<RGBpixel> const& pixels, int bitDepth = 256) -> std::vector<RGBpixel> {
-		if (bitDepth == 1) {
-			if (pixels.size() != 0)
-				return std::vector{ average(pixels) };
-			else
-				return { RGBpixel() };
-		}
-		auto res = median_cut(pixels);
-		auto lhs = palletize(res.first, bitDepth / 2);
-		auto rhs = palletize(res.second, bitDepth / 2);
-		lhs.insert(lhs.end(), rhs.begin(), rhs.end());
-		return lhs;
-	}
-
-	using lzw_code = std::variant<
-		std::vector<std::bitset<2>>,
+	using lzw_code = std::tuple<
 		std::vector<std::bitset<3>>,
 		std::vector<std::bitset<4>>,
 		std::vector<std::bitset<5>>,
@@ -291,7 +189,7 @@ namespace gif {
 	>;
 
 	template<std::size_t const n>
-	auto toBitset(std::vector<uint16_t> const& in) -> lzw_code {
+	auto toBitset(std::vector<uint16_t> const& in) -> std::vector<std::bitset<n>> {
 		auto buffer = std::vector<std::bitset<n>>(in.size());
 		for (size_t i = 0; i < buffer.size(); i++) {
 			buffer[i] = in[i];
@@ -358,7 +256,7 @@ namespace gif {
 		//This function returns a std::bitset<N> by design where N is the amount of bits needed to store colortable+clearcode+stopcode+generated codes
 		//bitset size can't be determined just based on the function input since it depends on the pixels how many codes are generated in the table
 		//a lower bound can be determined though based on the size of the colortable
-		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> lzw_code {
+		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<uint16_t> {
 			auto const lzw_code_size = colorTableBits; //number of color bits??
 			uint16_t const clearCode = size_t(1) << lzw_code_size;
 			uint16_t const end_of_info = clearCode + 1;
@@ -436,97 +334,56 @@ namespace gif {
 			//End of pixels, final key
 			out.push_back(currentKey);
 			out.push_back(end_of_info);
-
-			//Biggest key we needed
-			auto const bitsUsed = [](uint16_t const n) -> size_t {
-				std::bitset<14> highest = n;
-				for (size_t i = highest.size() - 1; i > 1; i--) {
-					if (highest.test(i))
-						return i + 1;
-				}
-				return 2;
-
-			}(compressionID);
-
-			lzw_code res;
-
-			switch (bitsUsed) {
-			case 2:
-			{
-				res = toBitset<2>(out);
-				break;
-			}
-			case 3:
-			{
-				res = toBitset<3>(out);
-				break;
-			}
-			case 4:
-			{
-				res = toBitset<4>(out);
-				break;
-			}
-			case 5:
-			{
-				res = toBitset<5>(out);
-				break;
-			}
-			case 6:
-			{
-				res = toBitset<6>(out);
-				break;
-			}
-			case 7:
-			{
-				res = toBitset<7>(out);
-				break;
-			}
-			case 8:
-			{
-				res = toBitset<8>(out);
-				break;
-			}
-			case 9:
-			{
-				res = toBitset<9>(out);
-				break;
-			}
-			case 10:
-			{
-				res = toBitset<10>(out);
-				break;
-			}
-			case 11:
-			{
-				res = toBitset<11>(out);
-				break;
-			}
-			case 12:
-			{
-				res = toBitset<12>(out);
-				break;
-			}
-			case 13:
-			{
-				res = toBitset<13>(out);
-				break;
-			}
-			case 14:
-			{
-				res = toBitset<14>(out);
-				break;
-			}
-			}
-
-			return res;
+			
+			return out;
 		}
 
-		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::optional<std::pair<std::vector<byte>, size_t>> {
+		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<byte> {
 			auto enc = lzw_encode(in, colorTableBits);
-			auto packed = std::visit([](auto const& v) -> std::optional<std::pair<std::vector<byte>, size_t>> {
-				return pack(v);
-				}, enc);
-			return packed;
+
+			auto bitsNeeded = colorTableBits;
+			auto out = std::vector<std::byte>(1);
+
+			int bitsLeft = 8;
+
+			for (auto& token : enc) {
+				if ((token & (1 << bitsNeeded)) != 0) {
+					bitsNeeded++;
+				}
+
+				int bitsUsed = 8 - bitsLeft;
+
+				auto wordBitsLeft = bitsNeeded;
+
+				if (bitsLeft != 0) {
+					out.back() |= std::byte(token << bitsUsed);
+					wordBitsLeft -= bitsLeft;
+					if (wordBitsLeft < 0) {
+						bitsLeft = -wordBitsLeft;
+					}
+					else if (wordBitsLeft == 0) {
+						bitsLeft = 0;
+						out.resize(out.size() + 1);
+					}
+					else if (wordBitsLeft > 0) {
+						bitsLeft = wordBitsLeft;
+						out.emplace_back(token >> (bitsNeeded - bitsLeft));
+						bitsLeft -= 8;
+
+						if (bitsLeft < 0) {
+							bitsLeft = -bitsLeft;
+						}
+						else if (bitsLeft == 0) {
+							out.resize(out.size() + 1);
+						}
+						else if (bitsLeft > 0) {
+							out.emplace_back(token >> ()
+						}
+					}
+				}
+			}
+
+			return out;
 		}
 
 		auto write() -> std::optional<std::vector<byte>> {
@@ -569,13 +426,9 @@ namespace gif {
 					continue;
 
 				auto const mapped = mapPixels(pixels, *activeTable);
-				auto const asBytes = encode(mapped, activeTable->bitsNeeded());
+				auto const bytes = encode(mapped, activeTable->bitsNeeded());
 
-				if (!asBytes.has_value())
-					continue;
-
-				auto const [bytes, size] = asBytes.value();
-				out.emplace_back(byte(size - 1));
+				out.emplace_back(byte(activeTable->bitsNeeded()));
 
 				auto bytesLeft = bytes.size();
 				auto amountOfBlocks = bytesLeft / 0xff;
