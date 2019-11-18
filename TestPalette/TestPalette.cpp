@@ -126,8 +126,8 @@ namespace TestPalette
 		};
 
 		TEST_METHOD(generateRainbow) {
-			uint16_t width = 256;
-			uint16_t height = 256;
+			uint16_t width = 32;
+			uint16_t height = 32;
 
 			std::vector<hsv<double>> pixelsHSV(size_t(width * height));
 			std::vector<gif::RGBpixel> outPixels(pixelsHSV.size());

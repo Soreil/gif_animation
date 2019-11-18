@@ -263,7 +263,7 @@ namespace gif {
 			uint16_t compressionID = clearCode + 1;
 			//uint16_t codeBits = lzw_code_size + 1;
 
-			std::map<uint16_t, std::vector<byte>> table;
+			std::vector<std::vector<byte>> table(0x1000);
 
 			//initialize with our palette we should really clean this up, it's close to overflow
 			for (auto i = size_t(0); i < (size_t(1) << colorTableBits); i++) {
@@ -285,15 +285,15 @@ namespace gif {
 
 			//initial state from which the algorithm can operate
 			std::vector<byte> hash{ in[1] };
-			uint16_t currentKey = 0;
+			size_t currentKey = 0;
 
 			auto earlyResult = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-				return kv.second == hash;
+				return kv == hash;
 				});
 
 			//this has to always succeed or the input data has more range than the colortable
 			if (earlyResult != table.end()) {
-				currentKey = earlyResult->first;
+				currentKey = std::distance(table.begin(), earlyResult);
 			}
 
 			//Always add first string to table
@@ -305,14 +305,14 @@ namespace gif {
 				hash.emplace_back(in[i]);
 
 				auto result = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-					return kv.second == hash;
+					return kv == hash;
 					});
 
 				if (result != table.end()) {
-					currentKey = result->first;
+					currentKey = std::distance(table.begin(), result);
 				}
 				else {
-					out.push_back(currentKey);
+					out.push_back(uint16_t(currentKey));
 					if (compressionID >= 0xFFF) {
 						throw std::exception("CompressionID grew bigger than 12 bit in size");
 					}
@@ -323,11 +323,11 @@ namespace gif {
 					//Initialize local string with suffix of old string
 					hash = std::vector{ hash.back() };
 					auto at = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-						return kv.second == hash;
+						return kv == hash;
 						});
 
 					if (at != table.end()) {
-						currentKey = at->first;
+						currentKey = std::distance(table.begin(), at);
 					}
 					else {
 						throw std::exception("Impossible to hit this");
@@ -336,7 +336,7 @@ namespace gif {
 
 			}
 			//End of pixels, final key
-			out.push_back(currentKey);
+			out.push_back(uint16_t(currentKey));
 			out.push_back(end_of_info);
 
 			return out;
@@ -348,7 +348,9 @@ namespace gif {
 			auto index = std::vector<std::vector<uint16_t>::iterator >();
 
 			for (size_t i = colorTableBits; i < 12; i++) {
-				if (auto found = std::find(enc.begin(), enc.end(), (1 << i)); found != enc.end()) {
+				if (auto found = std::find_if(enc.begin(), enc.end(), [i](auto const& cur) -> bool {
+					return (cur & (1 << i)) != 0;
+					}); found != enc.end()) {
 					index.emplace_back(found);
 				}
 			}
