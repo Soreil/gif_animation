@@ -126,14 +126,14 @@ namespace TestPalette
 		};
 
 		TEST_METHOD(generateRainbow) {
-			uint16_t width = 32;
-			uint16_t height = 32;
+			uint16_t width = 128;
+			uint16_t height = 128;
 
 			std::vector<hsv<double>> pixelsHSV(size_t(width * height));
 			std::vector<gif::RGBpixel> outPixels(pixelsHSV.size());
 
 			for (size_t i = 0; i < pixelsHSV.size(); i++) {
-				pixelsHSV[i].h = (360.0*(double(i)/ double(pixelsHSV.size())));
+				pixelsHSV[i].h = (360.0 * (double(i) / double(pixelsHSV.size())));
 				pixelsHSV[i].s = 1;
 				pixelsHSV[i].v = 1;
 			}
@@ -164,6 +164,50 @@ namespace TestPalette
 						"-" + std::to_string(width) +
 						"x" + std::to_string(height) +
 						".gif"), std::ofstream::binary);
+
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+
+			}
+		}
+
+		TEST_METHOD(generateBNW) {
+			uint16_t width = 1024;
+			uint16_t height = 1024;
+
+			auto const black = gif::RGBpixel{ 1,1,1 };
+			auto const white = gif::RGBpixel{ 0xfe,0xfe,0xfe };
+
+			auto outPixels = std::vector<gif::RGBpixel>(width * height);
+			bool isBlack = false;
+			for (auto& pixel : outPixels) {
+				if (isBlack)
+					pixel = black;
+				else
+					pixel = white;
+				isBlack = !isBlack;
+			}
+
+			auto enc = gif::encoder(width, height, outPixels);
+			auto hasImg = enc.write();
+
+			if (hasImg) {
+				auto img = hasImg.value();
+				auto outFileDir = std::filesystem::path("buggedRainbow");
+				std::filesystem::create_directory(outFileDir);
+
+				int fileID = 0;
+				while (std::filesystem::exists(outFileDir /
+					std::filesystem::path(std::to_string(fileID) +
+						"-" + std::to_string(width) +
+						"x" + std::to_string(height) +
+						"bw.gif")))
+					fileID++;
+
+				auto outFile = std::ofstream(outFileDir /
+					std::filesystem::path(std::to_string(fileID) +
+						"-" + std::to_string(width) +
+						"x" + std::to_string(height) +
+						"bw.gif"), std::ofstream::binary);
 
 				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
 
@@ -273,7 +317,7 @@ namespace TestPalette
 			if (binaryImage) {
 				auto const img = binaryImage.value();
 
-				auto outFilePath = std::filesystem::path("out.gif");
+				auto outFilePath = std::filesystem::path("outWIKI.gif");
 				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
 				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
 			}

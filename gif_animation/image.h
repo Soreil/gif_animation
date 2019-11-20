@@ -107,7 +107,4 @@ namespace gif {
 		lhs.insert(lhs.end(), rhs.begin(), rhs.end());
 		return lhs;
 	}
-
-
-
 }

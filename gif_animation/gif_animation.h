@@ -8,6 +8,9 @@
 #include <cstddef>
 #include <variant>
 #include <tuple>
+#include <chrono>
+#include <iostream>
+#include <set>
 #include "image.h"
 
 using std::byte;
@@ -252,100 +255,81 @@ namespace gif {
 
 		encoder() = default;
 
-		//This function returns a std::bitset<N> by design where N is the amount of bits needed to store colortable+clearcode+stopcode+generated codes
-		//bitset size can't be determined just based on the function input since it depends on the pixels how many codes are generated in the table
-		//a lower bound can be determined though based on the size of the colortable
-		auto lzw_encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<uint16_t> {
-			auto const lzw_code_size = colorTableBits; //number of color bits??
-			uint16_t const clearCode = size_t(1) << lzw_code_size;
-			uint16_t const end_of_info = clearCode + 1;
+		template <typename T>
+		struct leaf {
+			T const value;
+			size_t const key;
+			mutable std::set<leaf> next;
 
-			uint16_t compressionID = clearCode + 1;
-			//uint16_t codeBits = lzw_code_size + 1;
+			leaf(T n, size_t code) : value(n), key(code) {}
+			leaf(T n) : value(n), key(0) {}
 
-			std::vector<std::vector<byte>> table(0x1000);
+			bool operator<(leaf const& rhs) const { return value < rhs.value; }
+		};
 
-			//initialize with our palette we should really clean this up, it's close to overflow
-			for (auto i = size_t(0); i < (size_t(1) << colorTableBits); i++) {
-				table[uint16_t(i)] = { byte(i) };
+		template <typename T>
+		auto lzw_compress(std::vector<T> const& codeSteam, size_t const colorTableBits)
+			-> std::vector<size_t> {
+			std::vector<size_t> indexStream;
+			std::set<leaf<T>> root;
+
+			auto removeChildren = [](std::set<leaf<T>>& base) {
+				for (auto& leaf : base) {
+					leaf.next.clear();
+				}
+			};
+
+			size_t const tableSize = 1 << colorTableBits;
+			size_t const clearCode = tableSize;
+			size_t const stopCode = clearCode + 1;
+			size_t const startOfCode = stopCode + 1;
+
+			for (size_t i = 0; i < tableSize; i++) {
+				root.insert(leaf(T(i), i));
 			}
 
-			table[clearCode] = std::vector{ byte((clearCode & 0xf00) >> 8),byte(clearCode & 0xff) }; //This doesn't find it a byte
-			table[end_of_info] = std::vector{ byte((end_of_info & 0xf00) >> 8),byte(end_of_info & 0xff) }; //this doesn't fit in a byte
+			indexStream.emplace_back(clearCode);
 
-			std::vector<uint16_t> out;
+			size_t nextCode = startOfCode;
+			std::vector<size_t> indexBuffer;
 
-			out.push_back(clearCode);
+			auto currentLeaf = root.find(leaf(codeSteam.front()));
+			indexBuffer.emplace_back(currentLeaf->key);
 
-			//Push first pixel right on to output
-			out.push_back(uint16_t(in[0]));
+			for (size_t i = 1; i < codeSteam.size(); i++) {
+				auto K = codeSteam[i];
 
-			//Second pixel is always added to the map
-			//table[++compressionID] = std::vector{ in[0],in[1] };
-
-			//initial state from which the algorithm can operate
-			std::vector<byte> hash{ in[1] };
-			size_t currentKey = 0;
-
-			auto earlyResult = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-				return kv == hash;
-				});
-
-			//this has to always succeed or the input data has more range than the colortable
-			if (earlyResult != table.end()) {
-				currentKey = std::distance(table.begin(), earlyResult);
-			}
-
-			//Always add first string to table
-			table[++compressionID] = std::vector{ in[0],in[1] };
-
-			//For some reason currentkey starts updating at some point for some inputs
-			for (size_t i = 2; i < in.size(); i++) {
-
-				hash.emplace_back(in[i]);
-
-				auto result = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-					return kv == hash;
-					});
-
-				if (result != table.end()) {
-					currentKey = std::distance(table.begin(), result);
+				if (auto found = currentLeaf->next.find(K);
+					found != currentLeaf->next.end()) {
+					indexBuffer.emplace_back(found->key);  // Add K
+					currentLeaf = found;
 				}
 				else {
-					out.push_back(uint16_t(currentKey));
-					if (compressionID >= 0xFFF) {
-						throw std::exception("CompressionID grew bigger than 12 bit in size");
-					}
-					else {
-						table[++compressionID] = hash;
+					currentLeaf->next.insert(leaf(K, nextCode++));
+					indexStream.emplace_back(currentLeaf->key);
+
+					// If we hit code 0xfff we should clear now so we can start building codes
+					// again
+					if (nextCode >= 0xfff) {
+						removeChildren(root);
+						indexStream.emplace_back(clearCode);
+						nextCode = startOfCode;
 					}
 
-					//Initialize local string with suffix of old string
-					hash = std::vector{ hash.back() };
-					auto at = std::find_if(table.begin(), table.end(), [hash](auto const& kv) -> bool {
-						return kv == hash;
-						});
-
-					if (at != table.end()) {
-						currentKey = std::distance(table.begin(), at);
-					}
-					else {
-						throw std::exception("Impossible to hit this");
-					}
+					indexBuffer.clear();
+					currentLeaf = root.find(leaf(K));
+					indexBuffer.emplace_back(currentLeaf->key);
 				}
-
 			}
-			//End of pixels, final key
-			out.push_back(uint16_t(currentKey));
-			out.push_back(end_of_info);
-
-			return out;
+			indexStream.emplace_back(currentLeaf->key);
+			indexStream.emplace_back(stopCode);
+			return indexStream;
 		}
-
 		auto encode(std::vector<byte> const& in, size_t const colorTableBits) -> std::vector<byte> {
-			auto enc = lzw_encode(in, colorTableBits);
 
-			auto index = std::vector<std::vector<uint16_t>::iterator >();
+			auto enc = lzw_compress(in, colorTableBits);
+
+			auto index = std::vector<std::vector<size_t>::iterator >();
 
 			for (size_t i = colorTableBits; i < 12; i++) {
 				if (auto found = std::find_if(enc.begin(), enc.end(), [i](auto const& cur) -> bool {
@@ -356,7 +340,7 @@ namespace gif {
 			}
 			index.emplace_back(enc.end());
 
-			std::vector<std::vector<uint16_t>> blocks;
+			std::vector<std::vector<size_t>> blocks;
 
 			for (size_t i = 0; i < index.size() - 1; i++) {
 				blocks.emplace_back(std::vector(index[i], index[i + 1]));
