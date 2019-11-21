@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <variant>
 #include <tuple>
-#include <chrono>
 #include <iostream>
 #include <set>
 #include "image.h"
@@ -310,7 +309,7 @@ namespace gif {
 
 					// If we hit code 0xfff we should clear now so we can start building codes
 					// again
-					if (nextCode >= 0xfff) {
+					if (nextCode > 0xfff) {
 						removeChildren(root);
 						indexStream.emplace_back(clearCode);
 						nextCode = startOfCode;
@@ -329,13 +328,22 @@ namespace gif {
 
 			auto enc = lzw_compress(in, colorTableBits);
 
-			auto index = std::vector<std::vector<size_t>::iterator >();
 
-			for (size_t i = colorTableBits; i < 12; i++) {
-				if (auto found = std::find_if(enc.begin(), enc.end(), [i](auto const& cur) -> bool {
-					return (cur & (1 << i)) != 0;
-					}); found != enc.end()) {
-					index.emplace_back(found);
+			size_t chunks = std::count(enc.begin(), enc.end(), size_t(1 << colorTableBits));
+			for (size_t i = 0; i < chunks; i++);
+
+			//This currently sectiosn the image in to blocks where they increase by 1 bit in size
+			//up to a maximum of 12 bit. This is not actually how GIF gets encoded, when we hit
+			//a CLEARCODE code in our stream of indexes reset the codetable. This also means we
+			//start over again from the minimum code size. I am 99% sure we have to output codesize
+			//width codes again at that point.
+			//TODO: check if the clearcode itself is 12 bit wide or the minimum codesize.
+			auto index = std::vector<std::vector<size_t>::iterator >();
+			
+			index.emplace_back(enc.begin());
+			for (size_t i = colorTableBits+1; i <= 12; i++) {
+				if (auto found = std::find(enc.begin(), enc.end(), size_t((1 << i) - 1)); found != enc.end()) {
+					index.emplace_back(found+1);
 				}
 			}
 			index.emplace_back(enc.end());
