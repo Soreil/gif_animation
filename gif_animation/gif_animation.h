@@ -328,83 +328,117 @@ namespace gif {
 
 			auto enc = lzw_compress(in, colorTableBits);
 
+			auto split = [](std::vector<size_t> s, size_t delim) {
+				std::vector<size_t> offsets;
 
-			size_t chunks = std::count(enc.begin(), enc.end(), size_t(1 << colorTableBits));
-			for (size_t i = 0; i < chunks; i++);
-
-			//This currently sectiosn the image in to blocks where they increase by 1 bit in size
-			//up to a maximum of 12 bit. This is not actually how GIF gets encoded, when we hit
-			//a CLEARCODE code in our stream of indexes reset the codetable. This also means we
-			//start over again from the minimum code size. I am 99% sure we have to output codesize
-			//width codes again at that point.
-			//TODO: check if the clearcode itself is 12 bit wide or the minimum codesize.
-			auto index = std::vector<std::vector<size_t>::iterator >();
-			
-			index.emplace_back(enc.begin());
-			for (size_t i = colorTableBits+1; i <= 12; i++) {
-				if (auto found = std::find(enc.begin(), enc.end(), size_t((1 << i) - 1)); found != enc.end()) {
-					index.emplace_back(found+1);
+				size_t offset = 0;
+				while (true) {
+					auto found = std::find(s.begin() + offset, s.end(), delim);
+					if (found != s.end()) {
+						offset = std::distance(s.begin(), found) + 2;
+						offsets.emplace_back(offset);
+					}
+					else {
+						offsets.emplace_back(s.size() + 1);
+						break;
+					}
 				}
-			}
-			index.emplace_back(enc.end());
 
-			std::vector<std::vector<size_t>> blocks;
+				std::vector<std::vector<size_t>> segments;
 
-			for (size_t i = 0; i < index.size() - 1; i++) {
-				blocks.emplace_back(std::vector(index[i], index[i + 1]));
-			}
+				size_t chunkStart = 0;
+				for (auto x : offsets) {
+					auto buf = std::vector<size_t>(s.begin() + chunkStart, s.begin() + (x - 1));
+					chunkStart = x - 1;
+					segments.emplace_back(buf);
+				}
+				return segments;
+			};
 
-			std::vector<byte> out;
+			auto chunks = split(enc, (1<<colorTableBits));
 
-			size_t bitsUsed = 0;
-			for (size_t i = 0; i < blocks.size(); i++) {
-				size_t bitsPerCode = colorTableBits + 1 + i;
-				auto const& currentBlock = blocks[i];
+			//We can't just do the chunk writing seperately since they do not line up on a byte boundary.
+			//We have to write them all back to back since otherwise we get some zero bits which mess up
+			//the decoder.
+			auto writeChunk = [](std::vector<size_t>& chunk, size_t colorTableBits,std::vector<byte>& out, size_t used) -> size_t {
+				//This currently sectiosn the image in to blocks where they increase by 1 bit in size
+				//up to a maximum of 12 bit. This is not actually how GIF gets encoded, when we hit
+				//a CLEARCODE code in our stream of indexes reset the codetable. This also means we
+				//start over again from the minimum code size. I am 99% sure we have to output codesize
+				//width codes again at that point.
+				//TODO: check if the clearcode itself is 12 bit wide or the minimum codesize.
+				auto index = std::vector<std::vector<size_t>::iterator >();
 
-				for (size_t b = 0; b < currentBlock.size(); b++) {
-					auto bitsLeftIn = bitsPerCode;
-					auto bitsLeftOut = 8 - (bitsUsed % 8); //BUG: This doesn't work
+				index.emplace_back(chunk.begin());
+				for (size_t i = colorTableBits + 1; i <= 12; i++) {
+					if (auto found = std::find(chunk.begin(), chunk.end(), size_t((1 << i) - 1)); found != chunk.end()) {
+						index.emplace_back(found + 1);
+					}
+				}
+				index.emplace_back(chunk.end());
 
-					if (bitsLeftOut == 8) {
+				std::vector<std::vector<size_t>> blocks;
+
+				for (size_t i = 0; i < index.size() - 1; i++) {
+					blocks.emplace_back(std::vector(index[i], index[i + 1]));
+				}
+
+				size_t bitsUsed = used; //This also goes to external
+				for (size_t i = 0; i < blocks.size(); i++) {
+					size_t bitsPerCode = colorTableBits + 1 + i;
+					auto const& currentBlock = blocks[i];
+
+					for (size_t b = 0; b < currentBlock.size(); b++) {
+						auto bitsLeftIn = bitsPerCode;
+						auto bitsLeftOut = 8 - (bitsUsed % 8); //BUG: This doesn't work
+
+						if (bitsLeftOut == 8) {
+							out.resize(out.size() + 1);
+							bitsLeftOut = 8;
+						}
+
+						out.back() |= byte(currentBlock[b] << (8 - bitsLeftOut));
+						auto bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+						bitsUsed += bitsWritten;
+
+						bitsLeftIn -= bitsWritten;
+						if (bitsLeftIn == 0) {
+							continue;
+						}
+
 						out.resize(out.size() + 1);
 						bitsLeftOut = 8;
-					}
 
-					out.back() |= byte(currentBlock[b] << (8 - bitsLeftOut));
-					auto bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
-					bitsUsed += bitsWritten;
+						out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
+						bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+						bitsUsed += bitsWritten;
 
-					bitsLeftIn -= bitsWritten;
-					if (bitsLeftIn == 0) {
-						continue;
-					}
+						bitsLeftIn -= bitsWritten;
+						if (bitsLeftIn == 0) {
+							continue;
+						}
 
-					out.resize(out.size() + 1);
-					bitsLeftOut = 8;
+						out.resize(out.size() + 1);
+						bitsLeftOut = 8;
 
-					out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
-					bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
-					bitsUsed += bitsWritten;
+						out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
+						bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
+						bitsUsed += bitsWritten;
 
-					bitsLeftIn -= bitsWritten;
-					if (bitsLeftIn == 0) {
-						continue;
-					}
-
-					out.resize(out.size() + 1);
-					bitsLeftOut = 8;
-
-					out.back() |= byte(currentBlock[b] >> (bitsPerCode - bitsLeftIn));
-					bitsWritten = std::min(bitsLeftOut, bitsLeftIn);
-					bitsUsed += bitsWritten;
-
-					bitsLeftIn -= bitsWritten;
-					if (bitsLeftIn != 0) {
-						throw std::exception("This should never happen");
+						bitsLeftIn -= bitsWritten;
+						if (bitsLeftIn != 0) {
+							throw std::exception("This should never happen");
+						}
 					}
 				}
-			}
+				return bitsUsed;
+			};
 
+			std::vector<byte> out;
+			size_t used = 0;
+			for (auto & chunk : chunks) {
+				used = writeChunk(chunk, colorTableBits , out,used);
+			}
 			return out;
 		}
 

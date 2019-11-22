@@ -219,7 +219,7 @@ namespace TestPalette
 			for (double i = 0.0; i < 360.0; i += 10.0) {
 				std::vector<hsv<double>> pixelsHSV;
 				std::vector<gif::RGBpixel> outPixels;
-				for (double h = 0.0 + i; h < 360.0 + i; h += 0.1) {
+				for (double h = 0.0 + i; h < 360.0 + i; h += 0.01) {
 					pixelsHSV.emplace_back(hsv<double>(double(h), 1.0, 1.0));
 				}
 				for (auto const& x : pixelsHSV) {
