@@ -12,6 +12,38 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace TestPalette
 {
+	TEST_CLASS(PPM)
+	{
+	public:
+		TEST_METHOD(LenaToGIF)
+		{
+			std::filesystem::current_path("..");
+			auto p = std::filesystem::current_path();
+			auto s = L"Lena not present in" + p.generic_wstring();
+			auto fileName = "lena_color.ppm";
+			Assert::IsTrue(std::filesystem::exists(fileName), s.c_str());
+
+			std::ifstream file("lena_color.ppm");
+			std::string format;
+			file >> format;
+			Assert::IsTrue(format == "P6", L"Illegal format");
+			uint16_t width = 0;
+			uint16_t height = 0;
+			file >> width >> height;
+			Assert::IsTrue(width == 512 && height == 512);
+			uint16_t bitdepth = 0;
+			file >> bitdepth;
+			Assert::IsTrue(bitdepth == 0xff);
+
+			
+			std::string pixels;
+			file >> pixels;
+			file.close();
+
+			std::vector<std::uint8_t> pix(pixels.begin(), pixels.end());
+			auto originPixel = gif::RGBpixel{ pix[0],pix[1],pix[2] };
+		};
+	};
 	TEST_CLASS(HSL)
 	{
 	private:
@@ -126,8 +158,8 @@ namespace TestPalette
 		};
 
 		TEST_METHOD(generateRainbow) {
-			uint16_t width = 512;
-			uint16_t height = 512;
+			uint16_t width = 1024;
+			uint16_t height = 1024;
 
 			std::vector<hsv<double>> pixelsHSV(size_t(width * height));
 			std::vector<gif::RGBpixel> outPixels(pixelsHSV.size());
