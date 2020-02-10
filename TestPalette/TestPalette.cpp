@@ -35,13 +35,28 @@ namespace TestPalette
 			file >> bitdepth;
 			Assert::IsTrue(bitdepth == 0xff);
 
-			
-			std::string pixels;
-			file >> pixels;
+			auto size = size_t(width * height * 3);
+			std::vector<uint8_t> pixelData(size);
+			file.ignore(1); //Skip newline
+			file.read(reinterpret_cast<char*>(pixelData.data()), size);
 			file.close();
 
-			std::vector<std::uint8_t> pix(pixels.begin(), pixels.end());
-			auto originPixel = gif::RGBpixel{ pix[0],pix[1],pix[2] };
+			std::vector<gif::RGBpixel> pixels(size / 3);
+			for (size_t i = 0; i < pixels.size(); i++) {
+				pixels[i].r = pixelData[i * 3] ;
+				pixels[i].g = pixelData[i * 3 + 1];
+				pixels[i].b = pixelData[i * 3 + 2];
+			}
+
+			auto enc = gif::encoder(width, height, pixels);
+			auto binary = enc.write();
+			if (binary) {
+				auto const img = binary.value();
+
+				auto outFilePath = std::filesystem::path("lena_color_test.gif");
+				auto outFile = std::ofstream(outFilePath.string(), std::ofstream::binary);
+				outFile.write(reinterpret_cast<const char*>(img.data()), img.size());
+			}
 		};
 	};
 	TEST_CLASS(HSL)
