@@ -355,12 +355,12 @@ namespace gif {
 				return segments;
 			};
 
-			auto chunks = split(enc, (1<<colorTableBits));
+			auto chunks = split(enc, (1 << colorTableBits));
 
 			//We can't just do the chunk writing seperately since they do not line up on a byte boundary.
 			//We have to write them all back to back since otherwise we get some zero bits which mess up
 			//the decoder.
-			auto writeChunk = [](std::vector<size_t>& chunk, size_t colorTableBits,std::vector<byte>& out, size_t used) -> size_t {
+			auto writeChunk = [](std::vector<size_t>& chunk, size_t colorTableBits, std::vector<byte>& out, size_t used) -> size_t {
 				//This currently sectiosn the image in to blocks where they increase by 1 bit in size
 				//up to a maximum of 12 bit. This is not actually how GIF gets encoded, when we hit
 				//a CLEARCODE code in our stream of indexes reset the codetable. This also means we
@@ -376,11 +376,14 @@ namespace gif {
 					}
 				}
 				index.emplace_back(chunk.end());
+				//NOTE: there is a bug earlier in the program where these iterators can wind up being transposed due to garbled data.
+				if (!std::is_sorted(index.begin(), index.end())) 
+					throw std::domain_error("Error in chunk data, not valid GIF bytes.");
 
 				std::vector<std::vector<size_t>> blocks;
 
 				for (size_t i = 0; i < index.size() - 1; i++) {
-					blocks.emplace_back(std::vector(index[i], index[i + 1]));
+					blocks.emplace_back(std::vector<size_t>{ index[i], index[i + 1] });
 				}
 
 				size_t bitsUsed = used; //This also goes to external
@@ -436,8 +439,8 @@ namespace gif {
 
 			std::vector<byte> out;
 			size_t used = 0;
-			for (auto & chunk : chunks) {
-				used = writeChunk(chunk, colorTableBits , out,used);
+			for (auto& chunk : chunks) {
+				used = writeChunk(chunk, colorTableBits, out, used);
 			}
 			return out;
 		}
